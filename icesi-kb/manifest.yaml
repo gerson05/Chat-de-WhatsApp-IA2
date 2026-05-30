@@ -1,0 +1,188 @@
+documentos:
+  # ── Diferenciales Icesi ────────────────────────────────────────────────────
+  - id: DIF-001
+    ruta: 00_diferenciales_icesi/propuesta_de_valor.md
+    nombre: "Propuesta de Valor Icesi"
+    tags: [diferencial, marca, transversal]
+    segmento: [pregrado, posgrado, educontinua]
+    vigencia: 2026-12-31
+    aprobador: Direccion_Mercadeo
+
+  - id: DIF-002
+    ruta: 00_diferenciales_icesi/acompanamiento.md
+    nombre: "Acompañamiento Estudiantil Icesi"
+    tags: [diferencial, acompanamiento, bienestar]
+    segmento: [pregrado, posgrado, educontinua]
+    vigencia: 2026-12-31
+    aprobador: Direccion_Mercadeo
+
+  - id: DIF-003
+    ruta: 00_diferenciales_icesi/financiacion.md
+    nombre: "Opciones de Financiación Icesi"
+    tags: [financiacion, becas, icetex]
+    segmento: [pregrado, posgrado, educontinua]
+    vigencia: 2026-12-31
+    aprobador: Direccion_Mercadeo
+
+  # ── Metodología CIIPOC ─────────────────────────────────────────────────────
+  - id: MET-001
+    ruta: 01_metodologia_ciipoc/ciipoc_overview.md
+    nombre: "Metodología CIIPOC"
+    tags: [metodologia, ciipoc, ventas]
+    segmento: [transversal]
+    vigencia: 2026-12-31
+    aprobador: Carlos_Londono
+
+  # ── Portafolio Pregrado ────────────────────────────────────────────────────
+  - id: PRG-PIL-01
+    ruta: 02_portafolio/pregrado/ingenieria_sistemas.md
+    nombre: "Ingeniería de Sistemas"
+    unidad: pregrado
+    nivel: profesional
+    duracion: "10 semestres"
+    modalidad: presencial
+    diferencial_breve: "Formación práctica desde semestre 1 con énfasis en innovación y tecnología empresarial."
+    tags: [programa, pregrado, ingenieria, tecnologia]
+    segmento: [pregrado]
+    vigencia: 2026-12-31
+    aprobador: Julian_Andres_Gil
+
+  - id: PRG-PIL-02
+    ruta: 02_portafolio/pregrado/administracion_empresas.md
+    nombre: "Administración de Empresas"
+    unidad: pregrado
+    nivel: profesional
+    duracion: "10 semestres"
+    modalidad: presencial
+    diferencial_breve: "Liderazgo, emprendimiento y conexión real con el sector empresarial desde el inicio de la carrera."
+    tags: [programa, pregrado, administracion, negocios]
+    segmento: [pregrado]
+    vigencia: 2026-12-31
+    aprobador: Julian_Andres_Gil
+
+  - id: PRG-PIL-03
+    ruta: 02_portafolio/pregrado/psicologia.md
+    nombre: "Psicología"
+    unidad: pregrado
+    nivel: profesional
+    duracion: "10 semestres"
+    modalidad: presencial
+    diferencial_breve: "Psicología con perspectiva organizacional y social, vinculada a las necesidades del entorno vallecaucano y nacional."
+    tags: [programa, pregrado, psicologia, humanidades]
+    segmento: [pregrado]
+    vigencia: 2026-12-31
+    aprobador: Julian_Andres_Gil
+
+  # ── Portafolio Posgrado ────────────────────────────────────────────────────
+  - id: POS-PIL-01
+    ruta: 02_portafolio/posgrado/maestria_administracion.md
+    nombre: "Maestría en Administración (MBA)"
+    unidad: posgrado
+    nivel: maestria
+    duracion: "4 semestres"
+    modalidad: presencial
+    diferencial_breve: "MBA con énfasis en innovación y mercados latinoamericanos, flexible para profesionales en ejercicio."
+    tags: [programa, posgrado, mba, maestria, administracion]
+    segmento: [posgrado]
+    vigencia: 2026-12-31
+    aprobador: Lauri_Ariza
+
+  - id: POS-PIL-02
+    ruta: 02_portafolio/posgrado/especializacion_gerencia_proyectos.md
+    nombre: "Especialización en Gerencia de Proyectos"
+    unidad: posgrado
+    nivel: especializacion
+    duracion: "2 semestres"
+    modalidad: presencial
+    diferencial_breve: "Formación certificada en gestión de proyectos con metodologías ágiles y PMI, enfocada en resultados reales."
+    tags: [programa, posgrado, gerencia, proyectos, pmi]
+    segmento: [posgrado]
+    vigencia: 2026-12-31
+    aprobador: Lauri_Ariza
+
+  - id: POS-PIL-03
+    ruta: 02_portafolio/posgrado/maestria_mercadeo.md
+    nombre: "Maestría en Mercadeo"
+    unidad: posgrado
+    nivel: maestria
+    duracion: "4 semestres"
+    modalidad: presencial
+    diferencial_breve: "Maestría orientada a la estrategia de marca, comportamiento del consumidor y marketing digital en mercados reales."
+    tags: [programa, posgrado, maestria, mercadeo, marketing]
+    segmento: [posgrado]
+    vigencia: 2026-12-31
+    aprobador: Lauri_Ariza
+
+  # ── Portafolio Educación Continua ─────────────────────────────────────────
+  - id: EDC-PIL-01
+    ruta: 02_portafolio/educontinua/diplomado_transformacion_digital.md
+    nombre: "Diplomado en Transformación Digital"
+    unidad: educontinua
+    nivel: diplomado
+    duracion: "120 horas"
+    modalidad: hibrida
+    diferencial_breve: "Herramientas prácticas para liderar procesos de transformación digital en empresas medianas y grandes."
+    tags: [programa, educontinua, diplomado, digital, tecnologia]
+    segmento: [educontinua]
+    vigencia: 2026-12-31
+    aprobador: Yerli_Valencia
+
+  - id: EDC-PIL-02
+    ruta: 02_portafolio/educontinua/diplomado_habilidades_directivas.md
+    nombre: "Diplomado en Habilidades Directivas"
+    unidad: educontinua
+    nivel: diplomado
+    duracion: "100 horas"
+    modalidad: presencial
+    diferencial_breve: "Desarrollo de competencias de liderazgo, comunicación y gestión de equipos para directivos en ejercicio."
+    tags: [programa, educontinua, diplomado, liderazgo, directivos]
+    segmento: [educontinua]
+    vigencia: 2026-12-31
+    aprobador: Yerli_Valencia
+
+  - id: EDC-PIL-03
+    ruta: 02_portafolio/educontinua/curso_analitica_datos.md
+    nombre: "Curso de Analítica de Datos con Python"
+    unidad: educontinua
+    nivel: curso
+    duracion: "40 horas"
+    modalidad: virtual
+    diferencial_breve: "Curso intensivo de análisis de datos con Python orientado a resultados aplicables desde la primera sesión."
+    tags: [programa, educontinua, curso, datos, python, analitica]
+    segmento: [educontinua]
+    vigencia: 2026-12-31
+    aprobador: Yerli_Valencia
+
+  # ── FAQs ──────────────────────────────────────────────────────────────────
+  - id: FAQ-001
+    ruta: 03_faqs/admision.md
+    nombre: "FAQs Admisión"
+    tags: [faq, admision, inscripciones]
+    segmento: [pregrado, posgrado, educontinua]
+    vigencia: 2026-12-31
+    aprobador: Coordinacion_Comercial
+
+  - id: FAQ-002
+    ruta: 03_faqs/financiacion_becas.md
+    nombre: "FAQs Financiación y Becas"
+    tags: [faq, financiacion, becas, icetex]
+    segmento: [pregrado, posgrado, educontinua]
+    vigencia: 2026-12-31
+    aprobador: Coordinacion_Comercial
+
+  - id: FAQ-003
+    ruta: 03_faqs/proceso_matricula.md
+    nombre: "FAQs Proceso de Matrícula"
+    tags: [faq, matricula, proceso]
+    segmento: [pregrado, posgrado, educontinua]
+    vigencia: 2026-12-31
+    aprobador: Coordinacion_Comercial
+
+  # ── Reglas de escalamiento ────────────────────────────────────────────────
+  - id: ESC-001
+    ruta: 04_reglas_escalamiento/reglas.md
+    nombre: "Reglas de Escalamiento"
+    tags: [escalamiento, reglas, asesor]
+    segmento: [transversal]
+    vigencia: 2026-12-31
+    aprobador: Carlos_Londono
