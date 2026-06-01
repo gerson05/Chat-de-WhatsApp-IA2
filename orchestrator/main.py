@@ -14,7 +14,6 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import anthropic
 import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +22,7 @@ from pydantic import BaseModel
 
 from .config import get_settings
 from .conversation import run_conversation_turn
+from .llm import GeminiClient, get_llm_client
 from .crm_adapter import get_crm
 from .db import init_db, log_turn
 from .nivel2 import process_after_turn
@@ -42,15 +42,9 @@ _DEDUP_MAX = 10_000
 
 _bearer = HTTPBearer(auto_error=False)
 
-# Shared Anthropic client
-_anthropic_client: Optional[anthropic.AsyncAnthropic] = None
-
-
-def get_client() -> anthropic.AsyncAnthropic:
-    global _anthropic_client
-    if _anthropic_client is None:
-        _anthropic_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    return _anthropic_client
+# Shared LLM client (Gemini, wrapped in an Anthropic-compatible interface)
+def get_client() -> GeminiClient:
+    return get_llm_client()
 
 
 @asynccontextmanager

@@ -7,7 +7,7 @@ import logging
 import re
 from typing import Optional
 
-import anthropic
+from . import llm
 
 from .config import get_settings
 from .models import SessionState
@@ -108,7 +108,7 @@ def _build_messages(session: SessionState, user_message: str) -> list[dict]:
 async def run_conversation_turn(
     user_message: str,
     session: SessionState,
-    client: anthropic.AsyncAnthropic,
+    client: llm.GeminiClient,
 ) -> tuple[str, list[dict]]:
     """
     Runs one full conversation turn including tool-use loop.
@@ -151,14 +151,14 @@ async def run_conversation_turn(
 
         try:
             response = await client.messages.create(
-                model=settings.anthropic_model,
+                model=settings.llm_model,
                 max_tokens=1024,
                 system=SYSTEM_PROMPT,
                 tools=TOOL_SCHEMAS,
                 messages=current_messages,
                 timeout=settings.model_timeout_seconds,
             )
-        except anthropic.APITimeoutError:
+        except llm.APITimeoutError:
             log.warning("[Conversation] Claude timeout — returning fallback")
             return (
                 "Estoy procesando tu solicitud, dame un momento por favor.",

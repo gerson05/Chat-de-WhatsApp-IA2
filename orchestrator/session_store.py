@@ -83,8 +83,8 @@ async def create_session(phone: str, crm_data: Optional[dict] = None) -> Session
     return session
 
 
-async def compress_history(session: SessionState, anthropic_client) -> SessionState:
-    """Compress old turns into resumen_temprano using Haiku."""
+async def compress_history(session: SessionState, llm_client) -> SessionState:
+    """Compress old turns into resumen_temprano using the cheap LLM model."""
     if len(session.historial) <= settings.history_window:
         return session
 
@@ -94,8 +94,8 @@ async def compress_history(session: SessionState, anthropic_client) -> SessionSt
     turns_text = "\n".join(
         f"[{t.role}] {t.text}" for t in old_turns
     )
-    msg = await anthropic_client.messages.create(
-        model=settings.anthropic_model_cheap,
+    msg = await llm_client.messages.create(
+        model=settings.llm_model_cheap,
         max_tokens=300,
         messages=[
             {
@@ -109,6 +109,6 @@ async def compress_history(session: SessionState, anthropic_client) -> SessionSt
             }
         ],
     )
-    session.resumen_temprano = msg.content[0].text
+    session.resumen_temprano = msg.content[0].text if msg.content else ""
     session.historial = recent
     return session

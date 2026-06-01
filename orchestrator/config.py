@@ -3,9 +3,11 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    anthropic_api_key: str
-    anthropic_model: str = "claude-sonnet-4-6"
-    anthropic_model_cheap: str = "claude-haiku-4-5-20251001"
+    # ── LLM: Google Gemini (AI Studio) ──────────────────────────────────────────
+    # Migrado de Anthropic/Claude a Gemini para operar en la capa gratuita.
+    gemini_api_key: str = ""
+    llm_model: str = "gemini-2.0-flash"
+    llm_model_cheap: str = "gemini-2.0-flash"
 
     cohere_api_key: str = ""
 
