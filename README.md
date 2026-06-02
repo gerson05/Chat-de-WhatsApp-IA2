@@ -116,7 +116,7 @@ icesi-ia/
 | `REDIS_URL` | Redis para sesiones | ✅ |
 | `WHATSAPP_PHONE_ID` | ID del número de WA Business | Para producción |
 | `WHATSAPP_ACCESS_TOKEN` | Token de WA Cloud API | Para producción |
-| `COHERE_API_KEY` | Para embeddings y rerank de calidad | Recomendado |
+| `EMBEDDING_PROVIDER` | `gemini` (free tier) o `local` (sentence-transformers offline) para el RAG | Opcional (def. gemini) |
 | `CRM_BACKEND` | `mock` (dev) o `hubspot` | Opcional |
 
 ## Endpoints principales

@@ -9,7 +9,16 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-2.5-flash"
     llm_model_cheap: str = "gemini-2.5-flash-lite"
 
-    cohere_api_key: str = ""
+    # ── RAG / Embeddings (gratis, sin servidor) ─────────────────────────────────
+    # provider: "gemini" (free tier, sin descarga) | "local" (sentence-transformers, offline)
+    embedding_provider: str = "gemini"
+    embedding_model_gemini: str = "models/gemini-embedding-001"
+    embedding_model_local: str = "intfloat/multilingual-e5-small"
+    # Índice vectorial local en archivo (no requiere Postgres/pgvector).
+    vector_index_path: str = "./icesi-kb/.index/kb_index.pkl"
+    rag_top_k: int = 5
+
+    cohere_api_key: str = ""  # legado — ya no se usa (se reemplazó por embeddings gratis)
 
     database_url: str = "postgresql://icesi:icesi_pass@localhost:5432/icesi_ia"
     redis_url: str = "redis://localhost:6379/0"

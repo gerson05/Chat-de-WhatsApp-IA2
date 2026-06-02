@@ -8,19 +8,20 @@ pydantic-settings==2.4.0
 # LLM — Google Gemini (AI Studio, capa gratuita)
 google-generativeai==0.8.3
 
-# Database
+# Database (opcional: logs/métricas; el RAG ya NO usa Postgres)
 psycopg2-binary==2.9.9
-pgvector==0.3.2
 sqlalchemy==2.0.35
 alembic==1.13.2
 
 # Redis
 redis==5.1.0
 
-# Embeddings / RAG
-cohere==5.9.3
+# Embeddings / RAG (índice vectorial local, sin servidor)
 numpy==1.26.4
 PyYAML==6.0.2
+# Embeddings locales offline (opcional — alternativa gratuita a Gemini):
+#   pip install sentence-transformers
+# y poner EMBEDDING_PROVIDER=local en el .env
 
 # WhatsApp / HTTP
 httpx==0.27.2
