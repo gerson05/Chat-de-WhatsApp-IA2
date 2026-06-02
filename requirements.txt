@@ -23,6 +23,9 @@ PyYAML==6.0.2
 #   pip install sentence-transformers
 # y poner EMBEDDING_PROVIDER=local en el .env
 
+# Mensajería
+python-telegram-bot==21.6   # canal de la demo (gratis)
+
 # WhatsApp / HTTP
 httpx==0.27.2
 aiohttp==3.10.5

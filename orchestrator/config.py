@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://icesi:icesi_pass@localhost:5432/icesi_ia"
     redis_url: str = "redis://localhost:6379/0"
 
+    # ── Telegram (canal recomendado para la demo — gratis) ──────────────────────
+    telegram_bot_token: str = ""
+
     whatsapp_phone_id: str = ""
     whatsapp_access_token: str = ""
     whatsapp_app_secret: str = ""       # Meta App Secret — used for webhook HMAC verification

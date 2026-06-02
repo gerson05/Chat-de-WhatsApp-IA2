@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
+from .channels import Channel, WHATSAPP, NOOP
 from .config import get_settings
 from .conversation import run_conversation_turn
 from .llm import GeminiClient, get_llm_client
@@ -162,7 +163,7 @@ async def wa_incoming(request: Request):
     phone = msg["from"]
     text = msg["text"]
 
-    await _process_message(phone, text)
+    await _process_message(phone, text, WHATSAPP)
     return {"ok": True}
 
 
@@ -190,7 +191,7 @@ async def chat(req: ChatRequest, _: None = Security(_require_chat_key)):
         r = await get_redis()
         await r.delete(f"session:{hash_phone(req.phone)}")
 
-    reply, session, tool_calls = await _process_message(req.phone, req.message)
+    reply, session, tool_calls = await _process_message(req.phone, req.message, NOOP)
     if session is None:
         # Caso límite (p. ej. rate-limit): no hay sesión que reportar.
         return ChatResponse(
@@ -213,14 +214,14 @@ async def chat(req: ChatRequest, _: None = Security(_require_chat_key)):
 
 # ── Core processing pipeline ───────────────────────────────────────────────────
 
-async def _process_message(phone: str, user_text: str):
+async def _process_message(phone: str, user_text: str, channel: Channel = WHATSAPP):
     id_usuario = hash_phone(phone)
     client = get_client()
 
     # Rate limit
     within_limit = await check_rate_limit(id_usuario)
     if not within_limit:
-        await send_text_message(phone, (
+        await channel.send(phone, (
             "Has enviado muchos mensajes hoy. "
             "Por favor intenta nuevamente mañana o llámanos directamente."
         ))
@@ -255,7 +256,7 @@ async def _process_message(phone: str, user_text: str):
             },
             session,
         )
-        await send_text_message(phone, result.get("mensaje_para_aspirante", ""))
+        await channel.send(phone, result.get("mensaje_para_aspirante", ""))
         await save_session(session)
         return result.get("mensaje_para_aspirante", ""), session, []
 
@@ -292,8 +293,8 @@ async def _process_message(phone: str, user_text: str):
         latency_ms=latency_ms,
     )
 
-    # Send WhatsApp reply
-    await send_text_message(phone, reply)
+    # Enviar respuesta por el canal de origen (WhatsApp/Telegram; Noop en /chat)
+    await channel.send(phone, reply)
 
     return reply, session, tool_calls
 
