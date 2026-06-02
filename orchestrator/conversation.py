@@ -202,6 +202,21 @@ async def run_conversation_turn(
             {"role": "user", "content": tool_results},
         ]
 
+    if not final_text.strip() and tool_calls_executed:
+        try:
+            closing = await client.messages.create(
+                model=settings.llm_model,
+                max_tokens=1024,
+                system=SYSTEM_PROMPT,
+                messages=current_messages,
+                timeout=settings.model_timeout_seconds,
+            )
+            closing_parts = [b.text for b in closing.content if b.type == "text"]
+            if closing_parts:
+                final_text = " ".join(closing_parts)
+        except Exception as exc:
+            log.warning(f"[Conversation] Closing-text retry failed: {exc}")
+
     # Hallucination gate: if response contains risky patterns and no KB was called,
     # force a KB lookup signal
     kb_was_called = any(tc["name"] == "consultar_base_conocimiento" for tc in tool_calls_executed)

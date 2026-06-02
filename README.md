@@ -22,12 +22,12 @@ Orquestador (FastAPI)
 ### 1. Requisitos
 - Python 3.11+
 - Docker y Docker Compose
-- API key de Anthropic (Claude Sonnet 4)
+- API key de Google Gemini (AI Studio — capa gratuita): https://aistudio.google.com/apikey
 
 ### 2. Configuración
 ```bash
 cp .env.example .env
-# Edita .env con tu ANTHROPIC_API_KEY
+# Edita .env con tu GEMINI_API_KEY
 ```
 
 ### 3. Levantar infraestructura e iniciar
@@ -101,7 +101,7 @@ icesi-ia/
 
 | Variable | Descripción | Requerida |
 |----------|-------------|-----------|
-| `ANTHROPIC_API_KEY` | API key de Anthropic | ✅ |
+| `GEMINI_API_KEY` | API key de Google Gemini (AI Studio) | ✅ |
 | `DATABASE_URL` | PostgreSQL con pgvector | ✅ |
 | `REDIS_URL` | Redis para sesiones | ✅ |
 | `WHATSAPP_PHONE_ID` | ID del número de WA Business | Para producción |

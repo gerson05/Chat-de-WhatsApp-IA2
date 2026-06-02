@@ -6,8 +6,8 @@ class Settings(BaseSettings):
     # ── LLM: Google Gemini (AI Studio) ──────────────────────────────────────────
     # Migrado de Anthropic/Claude a Gemini para operar en la capa gratuita.
     gemini_api_key: str = ""
-    llm_model: str = "gemini-2.0-flash"
-    llm_model_cheap: str = "gemini-2.0-flash"
+    llm_model: str = "gemini-2.5-flash"
+    llm_model_cheap: str = "gemini-2.5-flash-lite"
 
     cohere_api_key: str = ""
 
