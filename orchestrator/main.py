@@ -9,14 +9,26 @@ Handles:
 """
 import hmac
 import logging
+import os
+import sys
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
+# Las consolas de Windows usan cp1252 por defecto; los tickets/logs contienen
+# emojis (🔴🟡🟢…). Forzamos UTF-8 para que print()/logging no lancen
+# UnicodeEncodeError y tumben la petición.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request, Response, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -101,6 +113,17 @@ async def health():
     return {"status": "ok"}
 
 
+# ── Consola interactiva (UI web) ──────────────────────────────────────────────
+
+_CONSOLE_HTML = os.path.join(os.path.dirname(__file__), "static", "console.html")
+
+
+@app.get("/", include_in_schema=False)
+async def console():
+    """Sirve la consola de chat interactiva. Abre http://localhost:8000/ en el navegador."""
+    return FileResponse(_CONSOLE_HTML, media_type="text/html")
+
+
 # ── WhatsApp webhook verification ─────────────────────────────────────────────
 
 @app.get("/webhook/whatsapp")
@@ -168,6 +191,16 @@ async def chat(req: ChatRequest, _: None = Security(_require_chat_key)):
         await r.delete(f"session:{hash_phone(req.phone)}")
 
     reply, session, tool_calls = await _process_message(req.phone, req.message)
+    if session is None:
+        # Caso límite (p. ej. rate-limit): no hay sesión que reportar.
+        return ChatResponse(
+            reply=reply,
+            session_id=hash_phone(req.phone),
+            etapa_ciipoc="-",
+            segmento="-",
+            escalado=False,
+            tool_calls=tool_calls,
+        )
     return ChatResponse(
         reply=reply,
         session_id=session.id_usuario,
@@ -205,7 +238,7 @@ async def _process_message(phone: str, user_text: str):
         session = await compress_history(session, client)
 
     # Max bot messages guard
-    if session.total_bot_messages >= settings.max_messages_per_session and not session.escalado:
+    if session.total_bot_messages >= settings.max_bot_messages_per_session and not session.escalado:
         from .tools import dispatch_tool
         result = dispatch_tool(
             "escalar_a_asesor",

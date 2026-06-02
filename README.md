@@ -52,7 +52,17 @@ make dashboard
 make test
 ```
 
-### 6. Probar el chat
+### 6. Consola web interactiva (recomendado)
+Con el orquestador corriendo, abre en el navegador:
+```
+http://localhost:8000/
+```
+Es una consola de chat que arma las peticiones a `/chat` por ti (no necesitas `curl`):
+muestra la respuesta del bot, la etapa CIIPOC, el segmento, si se escaló y las tools
+llamadas en cada turno. Permite cambiar el teléfono (simular distintos aspirantes) y
+reiniciar la sesión. Funciona aunque Redis no esté levantado (usa sesión en memoria).
+
+### 7. Probar el chat por terminal
 ```bash
 make chat-test
 # o directamente:

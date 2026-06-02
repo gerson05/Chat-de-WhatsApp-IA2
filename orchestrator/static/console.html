@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Icesi IA — Consola de Chat</title>
+<style>
+  :root {
+    --navy: #003087;
+    --navy-2: #0a4bb5;
+    --red: #e63946;
+    --bg: #eef1f6;
+    --card: #ffffff;
+    --muted: #6b7280;
+    --border: #d8dee9;
+    --ok: #2a9d8f;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: #1f2937; display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    background: var(--navy); color: #fff; padding: 10px 18px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .tag { background: rgba(255,255,255,.15); padding: 2px 8px; border-radius: 99px; font-size: 11px; }
+  header .spacer { flex: 1; }
+  header label { font-size: 12px; opacity: .85; margin-right: 4px; }
+  header input {
+    border: none; border-radius: 6px; padding: 6px 9px; font-size: 13px; width: 150px;
+  }
+  header button {
+    background: var(--red); color: #fff; border: none; border-radius: 6px;
+    padding: 7px 12px; font-size: 13px; cursor: pointer;
+  }
+  header button.ghost { background: rgba(255,255,255,.18); }
+  header button:hover { opacity: .9; }
+
+  main { display: flex; flex: 1; min-height: 0; }
+
+  /* Chat column */
+  .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #log { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .bubble { max-width: 72%; padding: 10px 14px; border-radius: 14px; line-height: 1.45; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; }
+  .user { align-self: flex-end; background: var(--navy); color: #fff; border-bottom-right-radius: 4px; }
+  .bot  { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .sys  { align-self: center; background: #fff4e5; color: #92400e; border: 1px solid #fcd9a8; font-size: 12.5px; max-width: 88%; }
+  .err  { align-self: center; background: #fde8e8; color: #9b1c1c; border: 1px solid #f7c5c5; font-size: 12.5px; max-width: 88%; }
+  .meta { font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+  .typing { align-self: flex-start; color: var(--muted); font-size: 13px; font-style: italic; }
+
+  .composer { border-top: 1px solid var(--border); background: var(--card); padding: 12px; display: flex; gap: 10px; align-items: flex-end; }
+  .composer textarea {
+    flex: 1; resize: none; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; font: inherit; font-size: 14px; max-height: 140px; min-height: 44px;
+  }
+  .composer textarea:focus { outline: 2px solid var(--navy-2); border-color: transparent; }
+  .composer button {
+    background: var(--navy); color: #fff; border: none; border-radius: 10px;
+    padding: 0 20px; height: 44px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .composer button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .chips { padding: 0 12px 10px; display: flex; gap: 8px; flex-wrap: wrap; background: var(--card); }
+  .chip { background: #eef1f6; border: 1px solid var(--border); border-radius: 99px; padding: 5px 11px; font-size: 12px; cursor: pointer; color: var(--navy); }
+  .chip:hover { background: #e2e8f5; }
+
+  /* Sidebar */
+  aside { width: 320px; border-left: 1px solid var(--border); background: var(--card); overflow-y: auto; padding: 16px; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+  .field { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+  .field span:first-child { color: var(--muted); }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+  .badge.no { background: #e5e7eb; color: #374151; }
+  .badge.yes { background: var(--red); color: #fff; }
+
+  .stepper { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 18px; }
+  .step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .step .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); flex: none; }
+  .step.done .dot { background: var(--ok); border-color: var(--ok); }
+  .step.current .dot { background: var(--navy); border-color: var(--navy); }
+  .step.current { color: var(--navy); font-weight: 700; }
+
+  .tool { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+  .tool summary { cursor: pointer; padding: 8px 10px; font-size: 12.5px; font-weight: 600; background: #f6f8fc; color: var(--navy); }
+  .tool pre { margin: 0; padding: 10px; font-size: 11px; background: #0f172a; color: #d1e7ff; overflow-x: auto; max-height: 220px; }
+  .empty { color: var(--muted); font-size: 12.5px; font-style: italic; }
+  #settings { display: none; background: rgba(0,0,0,.06); padding: 8px 18px; gap: 14px; align-items: center; flex-wrap: wrap; }
+  #settings.show { display: flex; }
+  #settings label { color: #1f2937; }
+  #settings input { width: 220px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🎓 Icesi IA</h1>
+    <span class="tag">Consola de chat</span>
+    <div class="spacer"></div>
+    <label>Teléfono</label>
+    <input id="phone" value="+573001234567" title="Identificador del aspirante (simula un usuario de WhatsApp)" />
+    <button class="ghost" id="settingsBtn" title="Ajustes">⚙</button>
+    <button id="resetBtn" title="Borra la sesión de este teléfono y empieza de cero">↺ Reiniciar sesión</button>
+  </header>
+
+  <div id="settings">
+    <label>URL del servidor</label>
+    <input id="baseUrl" placeholder="http://localhost:8000" />
+    <label>API key (opcional)</label>
+    <input id="apiKey" type="password" placeholder="CHAT_API_KEY si está configurada" />
+    <span class="empty">Se guardan en este navegador (localStorage).</span>
+  </div>
+
+  <main>
+    <section class="chat">
+      <div id="log"></div>
+      <div class="chips" id="chips">
+        <span class="chip">Hola, me interesa la Maestría en Mercadeo</span>
+        <span class="chip">¿Cuánto cuesta el MBA?</span>
+        <span class="chip">Quiero hablar con un asesor</span>
+        <span class="chip">Estoy explorando opciones para pregrado en sistemas</span>
+      </div>
+      <div class="composer">
+        <textarea id="input" placeholder="Escribe un mensaje como si fueras el aspirante…  (Enter para enviar, Shift+Enter para salto de línea)"></textarea>
+        <button id="sendBtn">Enviar</button>
+      </div>
+    </section>
+
+    <aside>
+      <h2>Estado de sesión</h2>
+      <div class="field"><span>Segmento</span><span id="segmento">—</span></div>
+      <div class="field"><span>Escalado</span><span id="escalado"><span class="badge no">No</span></span></div>
+      <div class="field" style="border:none"><span>Session ID</span><span id="sid" style="font-size:11px;color:var(--muted)">—</span></div>
+
+      <h2 style="margin-top:18px">Etapa CIIPOC</h2>
+      <div class="stepper" id="stepper"></div>
+
+      <h2>Tools del último turno</h2>
+      <div id="tools"><div class="empty">Aún no se han llamado tools.</div></div>
+    </aside>
+  </main>
+
+<script>
+  const CIIPOC = ["contacto","indagacion","identificacion","propuesta","objeciones","cierre"];
+  const $ = (id) => document.getElementById(id);
+  const log = $("log");
+
+  // Persistencia ligera de ajustes
+  $("phone").value   = localStorage.getItem("icesi_phone")  || $("phone").value;
+  $("baseUrl").value = localStorage.getItem("icesi_base")   || window.location.origin;
+  $("apiKey").value  = localStorage.getItem("icesi_apikey") || "";
+  ["phone","baseUrl","apiKey"].forEach(id => $(id).addEventListener("change", () => {
+    localStorage.setItem("icesi_phone", $("phone").value);
+    localStorage.setItem("icesi_base", $("baseUrl").value);
+    localStorage.setItem("icesi_apikey", $("apiKey").value);
+  }));
+
+  function addBubble(text, cls, metaText) {
+    const div = document.createElement("div");
+    div.className = "bubble " + cls;
+    div.textContent = text;
+    if (metaText) {
+      const m = document.createElement("div");
+      m.className = "meta"; m.textContent = metaText; div.appendChild(m);
+    }
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return div;
+  }
+
+  function renderStepper(stage) {
+    const idx = CIIPOC.indexOf(stage);
+    $("stepper").innerHTML = CIIPOC.map((s, i) => {
+      const cls = idx === -1 ? "" : (i < idx ? "done" : (i === idx ? "current" : ""));
+      const label = s.charAt(0).toUpperCase() + s.slice(1);
+      return `<div class="step ${cls}"><span class="dot"></span>${label}</div>`;
+    }).join("");
+  }
+
+  function renderTools(toolCalls) {
+    const box = $("tools");
+    if (!toolCalls || toolCalls.length === 0) {
+      box.innerHTML = '<div class="empty">No se llamaron tools en este turno.</div>';
+      return;
+    }
+    box.innerHTML = toolCalls.map(tc => `
+      <details class="tool">
+        <summary>🔧 ${tc.name}</summary>
+        <pre>input: ${JSON.stringify(tc.input, null, 2)}\n\nresult: ${JSON.stringify(tc.result, null, 2)}</pre>
+      </details>`).join("");
+  }
+
+  function setState(data) {
+    $("segmento").textContent = data.segmento || "—";
+    $("sid").textContent = (data.session_id || "—").slice(0, 16) + "…";
+    $("escalado").innerHTML = data.escalado
+      ? '<span class="badge yes">Sí</span>'
+      : '<span class="badge no">No</span>';
+    renderStepper(data.etapa_ciipoc);
+    renderTools(data.tool_calls);
+  }
+
+  let busy = false;
+  async function send(text, reset=false) {
+    if (busy) return;
+    const message = text ?? $("input").value.trim();
+    if (!message && !reset) return;
+    busy = true; $("sendBtn").disabled = true;
+
+    if (message) addBubble(message, "user");
+    $("input").value = "";
+
+    const typing = document.createElement("div");
+    typing.className = "typing"; typing.textContent = "escribiendo…";
+    log.appendChild(typing); log.scrollTop = log.scrollHeight;
+
+    const base = ($("baseUrl").value || window.location.origin).replace(/\/$/, "");
+    const headers = { "Content-Type": "application/json" };
+    if ($("apiKey").value) headers["Authorization"] = "Bearer " + $("apiKey").value;
+
+    try {
+      const t0 = performance.now();
+      const resp = await fetch(base + "/chat", {
+        method: "POST", headers,
+        body: JSON.stringify({ phone: $("phone").value, message: message || "Hola", reset_session: reset }),
+      });
+      const ms = Math.round(performance.now() - t0);
+      typing.remove();
+      if (!resp.ok) {
+        const detail = await resp.text();
+        addBubble(`Error ${resp.status}: ${detail}`, "err");
+        return;
+      }
+      const data = await resp.json();
+      addBubble(data.reply, "bot", `${data.etapa_ciipoc} · ${data.segmento} · ${ms} ms${data.tool_calls?.length ? " · " + data.tool_calls.length + " tool(s)" : ""}`);
+      setState(data);
+    } catch (e) {
+      typing.remove();
+      addBubble("No se pudo contactar al servidor: " + e.message + "\n¿Está corriendo uvicorn en " + base + "?", "err");
+    } finally {
+      busy = false; $("sendBtn").disabled = false; $("input").focus();
+    }
+  }
+
+  $("sendBtn").addEventListener("click", () => send());
+  $("input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  $("chips").addEventListener("click", (e) => {
+    if (e.target.classList.contains("chip")) { $("input").value = e.target.textContent; $("input").focus(); }
+  });
+  $("resetBtn").addEventListener("click", async () => {
+    log.innerHTML = "";
+    addBubble("Sesión reiniciada para " + $("phone").value, "sys");
+    renderStepper("contacto"); renderTools([]);
+    $("segmento").textContent = "—"; $("escalado").innerHTML = '<span class="badge no">No</span>';
+    await send("Hola", true);
+  });
+  $("settingsBtn").addEventListener("click", () => $("settings").classList.toggle("show"));
+
+  // Estado inicial
+  renderStepper("contacto");
+  addBubble("Bienvenido a la consola de pruebas del agente comercial Icesi. Escribe un mensaje (o usa una sugerencia) para iniciar la conversación.", "sys");
+  $("input").focus();
+</script>
+</body>
+</html>

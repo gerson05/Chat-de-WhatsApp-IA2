@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import logging
 import redis.asyncio as aioredis
 from datetime import datetime, timedelta
 from typing import Optional
@@ -9,14 +10,61 @@ from .config import get_settings
 from .models import SessionState, TurnMessage
 
 settings = get_settings()
+log = logging.getLogger(__name__)
 
-_redis: Optional[aioredis.Redis] = None
+
+class _InMemoryRedis:
+    """Fallback en memoria con el subconjunto de la API de Redis que usa el
+    session store. Solo para desarrollo/pruebas sin Redis: NO persiste entre
+    reinicios ni sirve para múltiples procesos."""
+
+    def __init__(self):
+        self._store: dict = {}
+
+    async def ping(self):
+        return True
+
+    async def get(self, key):
+        return self._store.get(key)
+
+    async def setex(self, key, ttl, value):
+        self._store[key] = value
+        return True
+
+    async def set(self, key, value):
+        self._store[key] = value
+        return True
+
+    async def delete(self, *keys):
+        for k in keys:
+            self._store.pop(k, None)
+        return True
+
+    async def incr(self, key):
+        value = int(self._store.get(key, 0)) + 1
+        self._store[key] = str(value)
+        return value
+
+    async def expire(self, key, ttl):
+        return True
 
 
-async def get_redis() -> aioredis.Redis:
+_redis = None
+
+
+async def get_redis():
     global _redis
     if _redis is None:
-        _redis = await aioredis.from_url(settings.redis_url, decode_responses=True)
+        try:
+            client = await aioredis.from_url(settings.redis_url, decode_responses=True)
+            await client.ping()
+            _redis = client
+        except Exception as exc:
+            log.warning(
+                f"[SessionStore] Redis no disponible ({exc}). "
+                "Usando almacenamiento EN MEMORIA (solo desarrollo, no persiste)."
+            )
+            _redis = _InMemoryRedis()
     return _redis
 
 
