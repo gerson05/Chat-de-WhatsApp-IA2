@@ -138,35 +138,52 @@ async def _handle_escalation(session: SessionState, escalar_result: dict):
 
 async def _schedule_followup(session: SessionState):
     """
-    Enqueue follow-up reminders based on CIIPOC stage.
-    In MVP uses Redis sorted set as a simple delay queue.
-    Production: replace with Celery/BullMQ.
+    Persist follow-up reminders to Postgres (primary — survives restarts) and
+    enqueue in Celery (fast execution, best-effort).
     """
-    import redis as sync_redis
-
     delay_map = {
-        EtapaCIIPOC.indagacion: 72 * 3600,       # 72h
-        EtapaCIIPOC.propuesta: 48 * 3600,         # 48h
-        EtapaCIIPOC.objeciones: 24 * 3600,        # 24h
-        EtapaCIIPOC.cierre: 24 * 3600,            # 24h
+        EtapaCIIPOC.indagacion: 72 * 3600,
+        EtapaCIIPOC.propuesta: 48 * 3600,
+        EtapaCIIPOC.objeciones: 24 * 3600,
+        EtapaCIIPOC.cierre: 24 * 3600,
     }
     delay = delay_map.get(session.etapa_ciipoc)
     if not delay:
         return
 
-    fire_at = datetime.utcnow().timestamp() + delay
+    fire_at = datetime.utcnow() + timedelta(seconds=delay)
+
+    # 1. Persist to Postgres — survives any service restart
+    celery_task_id = None
     try:
-        r = sync_redis.from_url(settings.redis_url)
-        job = json.dumps({
-            "session_id": session.id_usuario,
-            "etapa": session.etapa_ciipoc.value,
-            "nombre": session.nombre,
-            "programa": session.programa_interes,
-        })
-        r.zadd("followup_queue", {job: fire_at})
-        log.debug(f"[Nivel2] Follow-up queued in {delay}s for {session.id_usuario}")
+        from .celery_worker import send_followup_message
+        result = send_followup_message.apply_async(
+            kwargs={
+                "session_id": session.id_usuario,
+                "etapa": session.etapa_ciipoc.value,
+                "nombre": session.nombre or "",
+                "programa": session.programa_interes or "",
+            },
+            countdown=delay,
+        )
+        celery_task_id = result.id
+        log.debug(f"[Nivel2] Follow-up enqueued in Celery: task_id={celery_task_id}")
     except Exception as exc:
-        log.warning(f"[Nivel2] Could not schedule follow-up: {exc}")
+        log.warning(f"[Nivel2] Celery enqueue failed (non-critical): {exc}")
+
+    try:
+        from .db import create_followup_job
+        create_followup_job(
+            session_id=session.id_usuario,
+            etapa=session.etapa_ciipoc.value,
+            nombre=session.nombre or "",
+            programa=session.programa_interes or "",
+            fire_at=fire_at,
+            celery_task_id=celery_task_id,
+        )
+        log.debug(f"[Nivel2] Follow-up persisted to Postgres for {session.id_usuario} at {fire_at}")
+    except Exception as exc:
+        log.warning(f"[Nivel2] Postgres follow-up persist failed: {exc}")
 
 
 # ── Funnel state machine ───────────────────────────────────────────────────────

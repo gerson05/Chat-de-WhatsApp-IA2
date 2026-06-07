@@ -85,13 +85,28 @@ Listado de mejoras identificadas tras el análisis del sistema. Ordenadas por pr
 
 ## Estado General
 
+| # | Área | Estado |
+|---|------|--------|
+| #1 | Webhook signature | ✅ Resuelto |
+| #2 | Prompt injection | ✅ Resuelto |
+| #3 | Ingest fail-fast | ✅ Resuelto |
+| #4 | Tool captura datos aspirante | ✅ Resuelto |
+| #5 | Cola follow-ups persistente | ✅ Resuelto |
+| #6 | Archivo conversaciones Postgres | ✅ Resuelto |
+| #7 | Alertas vigencia KB | ✅ Resuelto |
+| #8 | Briefing estructurado escalamiento | ✅ Resuelto |
+| #9 | Panel admin dashboard | Pendiente (pospuesto) |
+| #10 | A/B testing prompts | ✅ Resuelto |
+| #11 | CRM HubSpot con reintentos | ✅ Resuelto |
+| #12 | Fallback local embeddings | ✅ Resuelto |
+| #13 | Compliance Ley 1581 | ✅ Resuelto (parcial) |
+
 | Área | Estado |
 |------|--------|
 | Arquitectura core | Sólida |
-| Seguridad producción | Pendiente (#1, #2) |
-| Funcionalidad MVP | Completa |
-| Compliance | Pendiente (#13) |
-| Operaciones / Monitoring | Parcial |
-| Tests de integración CRM | Pendiente (#11) |
-
-> **Recomendación:** Resolver #1 (webhook), #2 (prompt injection) y #3 (ingest silencioso) antes de cualquier despliegue en producción con usuarios reales.
+| Seguridad producción | ✅ Resuelta (#1, #2, #3) |
+| Funcionalidad MVP | ✅ Completa + mejoras (#4, #5, #6) |
+| Operaciones / Monitoring | ✅ Mejorado (#7, #8, #10, #12) |
+| Resiliencia / CRM | ✅ Mejorado (#11 circuit breaker) |
+| Compliance | ⚠️ Parcial (#13 hash+retención — falta revisión legal) |
+| Panel admin dashboard | Pendiente (#9) |

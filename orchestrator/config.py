@@ -40,6 +40,13 @@ class Settings(BaseSettings):
 
     secret_key: str = "cambia_esto_en_produccion_32chars_min"
     encryption_key: str = "cambia_esto_en_produccion_32chars_min"
+    phone_hash_secret: str = ""  # dedicated secret for phone hashing — falls back to secret_key
+
+    # Compliance / retention
+    data_retention_days: int = 90  # Ley 1581: default 90-day session retention
+
+    # A/B prompt testing
+    prompt_variant_default: str = "v1"
 
     internal_wa_group_pregrado: str = ""
     internal_wa_group_posgrado: str = ""

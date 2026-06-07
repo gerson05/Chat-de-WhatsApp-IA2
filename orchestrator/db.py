@@ -75,6 +75,36 @@ class IntentionLog(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 
+class ArchivedSession(Base):
+    """Full session JSON archived from Redis before TTL expiry. Audit trail / Ley 1581."""
+    __tablename__ = "archived_sessions"
+
+    session_id = Column(String(64), primary_key=True)
+    session_json = Column(Text, nullable=False)
+    etapa_ciipoc = Column(String(20), nullable=True)
+    segmento = Column(String(20), nullable=True)
+    escalado = Column(Boolean, default=False)
+    created_at = Column(DateTime, nullable=True, index=True)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    purge_after = Column(DateTime, nullable=True, index=True)
+
+
+class FollowupJob(Base):
+    """Persistent follow-up queue backed by Postgres. Survives Redis/service restarts."""
+    __tablename__ = "followup_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(String(64), nullable=False, index=True)
+    etapa = Column(String(20), nullable=False)
+    nombre = Column(String(200), nullable=True)
+    programa = Column(String(200), nullable=True)
+    fire_at = Column(DateTime, nullable=False, index=True)
+    executed = Column(Boolean, default=False, index=True)
+    celery_task_id = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    executed_at = Column(DateTime, nullable=True)
+
+
 _engine = None
 
 
@@ -86,7 +116,7 @@ def get_engine():
 
 
 def init_db():
-    """Create all tables and add pgvector extension."""
+    """Create all tables (conversation_logs, tickets, archived_sessions, followup_jobs, …)."""
     engine = get_engine()
     with engine.connect() as conn:
         conn.execute(
@@ -104,6 +134,83 @@ def init_db():
             "ON kb_chunks USING ivfflat (embedding vector_cosine_ops)"
         ))
         conn.commit()
+
+
+def archive_session(session_json: str, session_id: str, etapa: str, segmento: str,
+                    escalado: bool, created_at, retention_days: int = 90):
+    """Upsert full session JSON to Postgres. Called on every save — last write wins."""
+    from datetime import timedelta
+    try:
+        with Session(get_engine()) as db:
+            existing = db.get(ArchivedSession, session_id)
+            purge_after = datetime.utcnow() + timedelta(days=retention_days)
+            if existing:
+                existing.session_json = session_json
+                existing.etapa_ciipoc = etapa
+                existing.segmento = segmento
+                existing.escalado = escalado
+                existing.last_updated = datetime.utcnow()
+                existing.purge_after = purge_after
+            else:
+                db.add(ArchivedSession(
+                    session_id=session_id,
+                    session_json=session_json,
+                    etapa_ciipoc=etapa,
+                    segmento=segmento,
+                    escalado=escalado,
+                    created_at=created_at,
+                    purge_after=purge_after,
+                ))
+            db.commit()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"[DB] archive_session failed: {exc}")
+
+
+def create_followup_job(session_id: str, etapa: str, nombre: str, programa: str,
+                        fire_at, celery_task_id: str = None):
+    """Persist a follow-up job to Postgres so it survives service restarts."""
+    try:
+        with Session(get_engine()) as db:
+            job = FollowupJob(
+                session_id=session_id,
+                etapa=etapa,
+                nombre=nombre,
+                programa=programa,
+                fire_at=fire_at,
+                celery_task_id=celery_task_id,
+            )
+            db.add(job)
+            db.commit()
+            return str(job.id)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"[DB] create_followup_job failed: {exc}")
+        return None
+
+
+def purge_expired_sessions(retention_days: int = None):
+    """Delete archived sessions past their purge_after date. Call periodically."""
+    from datetime import timedelta
+    try:
+        with Session(get_engine()) as db:
+            cutoff = datetime.utcnow()
+            result = db.execute(
+                __import__("sqlalchemy").text(
+                    "DELETE FROM archived_sessions WHERE purge_after < :cutoff"
+                ),
+                {"cutoff": cutoff},
+            )
+            db.commit()
+            import logging
+            logging.getLogger(__name__).info(
+                f"[DB] Purged {result.rowcount} expired archived sessions."
+            )
+            return result.rowcount
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"[DB] purge_expired_sessions failed: {exc}")
+        return 0
 
 
 def log_turn(

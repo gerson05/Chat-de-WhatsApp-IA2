@@ -73,6 +73,18 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             log.warning(f"[Startup] DB init skipped: {exc}")
 
+    if settings.app_env == "production" and not settings.whatsapp_app_secret:
+        log.critical(
+            "[Startup] SECURITY: WHATSAPP_APP_SECRET is not set. "
+            "All /webhook/whatsapp requests will be rejected with 401."
+        )
+
+    try:
+        from ingest.check_vigencia import log_vigencia_warnings
+        log_vigencia_warnings()
+    except Exception as exc:
+        log.warning(f"[Startup] KB vigencia check failed: {exc}")
+
     log.info(f"[Startup] Icesi IA Orchestrator — env={settings.app_env}")
     yield
     # Shutdown

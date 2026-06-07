@@ -69,12 +69,10 @@ async def get_redis():
 
 
 def hash_phone(phone: str) -> str:
-    # HMAC with secret_key as salt — prevents rainbow table attacks on low-entropy phone numbers
-    return hmac.new(
-        settings.secret_key.encode(),
-        phone.encode(),
-        hashlib.sha256,
-    ).hexdigest()
+    # Uses phone_hash_secret when available (dedicated secret, Ley 1581 best practice).
+    # Falls back to secret_key for backward compatibility.
+    salt = (settings.phone_hash_secret or settings.secret_key).encode()
+    return hmac.new(salt, phone.encode(), hashlib.sha256).hexdigest()
 
 
 def _session_key(id_usuario: str) -> str:
@@ -113,10 +111,25 @@ async def save_session(session: SessionState):
     raw = session.model_dump_json()
     await r.setex(_session_key(session.id_usuario), ttl, raw)
 
+    # Archive to Postgres for audit trail / Ley 1581 compliance (non-blocking).
+    try:
+        from .db import archive_session
+        archive_session(
+            session_json=raw,
+            session_id=session.id_usuario,
+            etapa=session.etapa_ciipoc.value,
+            segmento=session.segmento.value,
+            escalado=session.escalado,
+            created_at=session.created_at,
+            retention_days=settings.data_retention_days,
+        )
+    except Exception as exc:
+        log.warning(f"[SessionStore] archive_session failed (non-critical): {exc}")
+
 
 async def create_session(phone: str, crm_data: Optional[dict] = None) -> SessionState:
     id_usuario = hash_phone(phone)
-    session = SessionState(id_usuario=id_usuario)
+    session = SessionState(id_usuario=id_usuario, prompt_variant=settings.prompt_variant_default)
 
     if crm_data:
         session.id_lead_crm = crm_data.get("lead_id")
