@@ -13,8 +13,11 @@ from typing import Optional
 
 import httpx
 
+from sqlalchemy.orm import Session
+
 from .config import get_settings
 from .crm_adapter import get_crm
+from .db import EscalamientoTicket, get_engine
 from .models import SessionState, EstadoFunnel, EtapaCIIPOC
 
 settings = get_settings()
@@ -83,7 +86,7 @@ async def _sync_crm(session: SessionState, tool_calls_executed: list[dict]):
 # ── Escalation handling ────────────────────────────────────────────────────────
 
 async def _handle_escalation(session: SessionState, escalar_result: dict):
-    """Create CRM task and notify internal group."""
+    """Create CRM task, persist ticket to DB, and notify internal group."""
     crm = get_crm()
 
     task = {
@@ -107,7 +110,24 @@ async def _handle_escalation(session: SessionState, escalar_result: dict):
     }
 
     task_id = await crm.create_task(task)
-    log.info(f"[Nivel2] Tarea creada: {task_id}")
+    log.info(f"[Nivel2] Tarea CRM creada: {task_id}")
+
+    # Persist ticket to DB
+    try:
+        with Session(get_engine()) as db:
+            ticket_row = EscalamientoTicket(
+                session_id=session.id_usuario,
+                lead_id=session.id_lead_crm,
+                motivo=escalar_result.get("motivo", "escalamiento_ia"),
+                prioridad=escalar_result.get("prioridad", "media"),
+                asesor_asignado=escalar_result.get("asesor_asignado"),
+                ticket_text=escalar_result.get("ticket", ""),
+            )
+            db.add(ticket_row)
+            db.commit()
+            log.info(f"[Nivel2] Ticket {ticket_row.id} persistido en DB")
+    except Exception as exc:
+        log.warning(f"[Nivel2] No se pudo persistir ticket en DB: {exc}")
 
     ticket_text = escalar_result.get("ticket", "")
     if ticket_text:
