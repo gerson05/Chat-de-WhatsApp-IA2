@@ -42,7 +42,8 @@ from .db import init_db, log_turn
 from .nivel2 import process_after_turn
 from .session_store import (
     check_rate_limit, create_session, hash_phone,
-    load_session, save_session, compress_history,
+    list_sessions, load_session, register_phone_display,
+    save_session, compress_history,
 )
 from .whatsapp import parse_incoming_message, send_text_message, verify_signature
 
@@ -141,6 +142,12 @@ async def console():
     return FileResponse(_CONSOLE_HTML, media_type="text/html")
 
 
+@app.get("/sessions")
+async def sessions_list(_: None = Security(_require_chat_key)):
+    """Lists active sessions for the testing console panel."""
+    return await list_sessions()
+
+
 # ── WhatsApp webhook verification ─────────────────────────────────────────────
 
 @app.get("/webhook/whatsapp")
@@ -206,6 +213,8 @@ async def chat(req: ChatRequest, _: None = Security(_require_chat_key)):
         from .session_store import get_redis
         r = await get_redis()
         await r.delete(f"session:{hash_phone(req.phone)}")
+
+    await register_phone_display(hash_phone(req.phone), req.phone)
 
     reply, session, tool_calls = await _process_message(req.phone, req.message, NOOP)
     if session is None:
