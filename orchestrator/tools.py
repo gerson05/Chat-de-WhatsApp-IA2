@@ -114,6 +114,13 @@ TOOL_SCHEMAS = [
                         "etapa_ciipoc_actual": {"type": "string"},
                         "necesidad_identificada": {"type": "string"},
                         "barrera_principal": {"type": "string"},
+                        "tono_aspirante": {
+                            "type": "string",
+                            "description": (
+                                "Tono emocional del aspirante en los últimos mensajes. "
+                                "Ej: 'ansioso por fechas', 'frustrado con costos', 'muy motivado'."
+                            ),
+                        },
                         "ultimos_5_intercambios": {"type": "string"},
                         "siguiente_accion_sugerida": {"type": "string"},
                     },
@@ -324,6 +331,7 @@ def tool_escalar_a_asesor(
     # Persist ticket to DB (async via nivel2 — here we just return the ticket)
     return {
         "ok": True,
+        "motivo": motivo,
         "asesor_asignado": asesor,
         "prioridad": prioridad,
         "ticket": ticket,
@@ -343,6 +351,7 @@ def _build_ticket(motivo, prioridad, resumen, asesor, session: SessionState) -> 
     etapa = resumen.get("etapa_ciipoc_actual") or session.etapa_ciipoc.value
     necesidad = resumen.get("necesidad_identificada") or session.necesidad_identificada or "—"
     barrera = resumen.get("barrera_principal") or session.barrera or "—"
+    tono = resumen.get("tono_aspirante") or "—"
     intercambios = resumen.get("ultimos_5_intercambios") or _last_turns(session, 5)
     siguiente = resumen.get("siguiente_accion_sugerida") or session.intencion_siguiente_accion or "—"
 
@@ -369,6 +378,7 @@ def _build_ticket(motivo, prioridad, resumen, asesor, session: SessionState) -> 
         f"Motivo: {motivo_texto}\n\n"
         f"📌 Necesidad identificada:\n{necesidad}\n\n"
         f"🚧 Barrera principal:\n{barrera}\n\n"
+        f"🎭 Tono del aspirante:\n{tono}\n\n"
         f"💬 Últimos intercambios:\n{intercambios}\n\n"
         f"✅ Acción recomendada:\n{siguiente}\n\n"
         f"⏱ Hora del escalamiento: {datetime.utcnow().strftime('%H:%M UTC')}"

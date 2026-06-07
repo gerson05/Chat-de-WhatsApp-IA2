@@ -114,5 +114,6 @@ class ResumenEscalamiento(BaseModel):
     etapa_ciipoc_actual: Optional[str] = None
     necesidad_identificada: Optional[str] = None
     barrera_principal: Optional[str] = None
+    tono_aspirante: Optional[str] = None
     ultimos_5_intercambios: Optional[str] = None
     siguiente_accion_sugerida: Optional[str] = None
