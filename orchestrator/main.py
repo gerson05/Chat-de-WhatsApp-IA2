@@ -325,3 +325,77 @@ async def metrics():
         }
     except Exception as exc:
         return {"error": str(exc)}
+
+
+# ── Ticket management ──────────────────────────────────────────────────────────
+
+class TomarTicketRequest(BaseModel):
+    asesor_nombre: str
+
+
+@app.get("/tickets")
+async def list_tickets(pendiente: Optional[bool] = None):
+    """List escalation tickets. ?pendiente=true for unclaimed, false for claimed."""
+    from sqlalchemy import text as sql_text
+    from .db import get_engine
+
+    where = ""
+    if pendiente is True:
+        where = "WHERE asesor_tomo_caso = false"
+    elif pendiente is False:
+        where = "WHERE asesor_tomo_caso = true"
+
+    try:
+        with get_engine().connect() as conn:
+            rows = conn.execute(sql_text(
+                f"""SELECT id::text, session_id, lead_id, motivo, prioridad,
+                           asesor_asignado, ticket_text, asesor_tomo_caso,
+                           asesor_nombre, took_at, created_at
+                    FROM tickets_escalamiento
+                    {where}
+                    ORDER BY created_at DESC
+                    LIMIT 100"""
+            )).fetchall()
+            tickets = [dict(r._mapping) for r in rows]
+            for t in tickets:
+                if t.get("created_at"):
+                    t["created_at"] = t["created_at"].isoformat()
+                if t.get("took_at"):
+                    t["took_at"] = t["took_at"].isoformat()
+        return {"tickets": tickets, "total": len(tickets)}
+    except Exception as exc:
+        return {"tickets": [], "total": 0, "error": str(exc)}
+
+
+@app.post("/tickets/{ticket_id}/tomar")
+async def tomar_ticket(ticket_id: str, req: TomarTicketRequest):
+    """Mark a ticket as taken by an advisor (first-claim wins)."""
+    from sqlalchemy import text as sql_text
+    import datetime as dt_mod
+    from .db import get_engine
+
+    try:
+        with get_engine().connect() as conn:
+            result = conn.execute(sql_text(
+                """UPDATE tickets_escalamiento
+                   SET asesor_tomo_caso = true,
+                       asesor_nombre    = :nombre,
+                       took_at          = :now
+                   WHERE id = :ticket_id
+                     AND asesor_tomo_caso = false"""
+            ), {
+                "nombre": req.asesor_nombre,
+                "now": dt_mod.datetime.utcnow(),
+                "ticket_id": ticket_id,
+            })
+            conn.commit()
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Ticket no encontrado o ya tomado por otro asesor",
+                )
+        return {"ok": True, "ticket_id": ticket_id, "asesor_nombre": req.asesor_nombre}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
