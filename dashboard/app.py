@@ -6,6 +6,7 @@ import os
 import sys
 from datetime import datetime, timedelta
 
+import httpx
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -23,6 +24,9 @@ st.set_page_config(
 )
 
 # ── DB connection ──────────────────────────────────────────────────────────────
+
+ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8000")
+
 
 @st.cache_resource
 def get_engine():
@@ -213,6 +217,61 @@ if not esc_table.empty and "motivo" in esc_table.columns:
     st.dataframe(esc_table, use_container_width=True)
 else:
     st.info("Sin escalamientos recientes")
+
+# ── Ticket management ─────────────────────────────────────────────────────────
+st.divider()
+st.subheader("🎫 Gestión de Tickets de Escalamiento")
+
+ticket_filter = st.radio(
+    "Mostrar", ["Pendientes", "Tomados", "Todos"], horizontal=True, key="ticket_filter"
+)
+filter_map = {"Pendientes": "true", "Tomados": "false", "Todos": None}
+pendiente_param = filter_map[ticket_filter]
+
+try:
+    params = {}
+    if pendiente_param is not None:
+        params["pendiente"] = pendiente_param
+    resp = httpx.get(f"{ORCHESTRATOR_URL}/tickets", params=params, timeout=5)
+    tickets_data = resp.json().get("tickets", []) if resp.is_success else []
+except Exception:
+    tickets_data = []
+
+if not tickets_data:
+    st.info("Sin tickets en esta categoría.")
+else:
+    for t in tickets_data:
+        prioridad_color = {"alta": "🔴", "media": "🟡", "baja": "🟢"}.get(t.get("prioridad", ""), "⚪")
+        tomado = t.get("asesor_tomo_caso", False)
+        estado_label = f"✅ {t.get('asesor_nombre', 'Asesor')}" if tomado else "⏳ Pendiente"
+        header = (
+            f"{prioridad_color} **{t.get('motivo', '—')}** · "
+            f"{str(t.get('created_at', ''))[:16].replace('T', ' ')} · "
+            f"Asesor: {t.get('asesor_asignado', '—')} · {estado_label}"
+        )
+        with st.expander(header, expanded=False):
+            st.text(t.get("ticket_text", "—"))
+            if not tomado:
+                col_nombre, col_btn = st.columns([3, 1])
+                nombre_input = col_nombre.text_input(
+                    "Tu nombre", key=f"nombre_{t['id']}", placeholder="Nombre del asesor"
+                )
+                if col_btn.button("Tomar caso", key=f"tomar_{t['id']}"):
+                    if not nombre_input.strip():
+                        st.warning("Ingresa tu nombre antes de tomar el caso.")
+                    else:
+                        try:
+                            r = httpx.post(
+                                f"{ORCHESTRATOR_URL}/tickets/{t['id']}/tomar",
+                                json={"asesor_nombre": nombre_input.strip()},
+                                timeout=5,
+                            )
+                            if r.is_success:
+                                st.success(f"Caso tomado por {nombre_input}. Recarga para actualizar.")
+                            else:
+                                st.error(r.json().get("detail", "Error al tomar el caso."))
+                        except Exception as e:
+                            st.error(f"No se pudo conectar al orquestador: {e}")
 
 # ── Quality eval section ───────────────────────────────────────────────────────
 st.divider()
