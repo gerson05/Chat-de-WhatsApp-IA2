@@ -270,5 +270,77 @@ class TestWhatsAppSplitting:
             assert len(p) <= 1024
 
 
+# ── New: escalation tool tests ────────────────────────────────────────────────
+
+class TestEscalamientoTool:
+    def test_escalar_retorna_motivo(self):
+        """T-ESC-01: tool_escalar_a_asesor result includes motivo field."""
+        from orchestrator.tools import tool_escalar_a_asesor
+        session = make_session(segmento=Segmento.pregrado)
+        result = tool_escalar_a_asesor(
+            motivo="frustracion",
+            prioridad="alta",
+            resumen={"nombre_aspirante": "Juan", "programa_interes": "Ing. Sistemas"},
+            session=session,
+        )
+        assert result["motivo"] == "frustracion"
+        assert result["prioridad"] == "alta"
+        assert result["ok"] is True
+
+
+class TestTicketBriefing:
+    def test_ticket_incluye_tono(self):
+        """T-ESC-02: _build_ticket includes tono_aspirante when provided."""
+        from orchestrator.tools import _build_ticket
+        session = make_session(segmento=Segmento.posgrado, nombre="Ana")
+        ticket = _build_ticket(
+            motivo="objecion_compleja",
+            prioridad="alta",
+            resumen={"tono_aspirante": "frustrado, repitió la misma objeción 3 veces"},
+            asesor="Lauri Ariza",
+            session=session,
+        )
+        assert "frustrado" in ticket
+
+
+class TestHandleEscalation:
+    def test_ticket_persisted_to_db(self):
+        """T-ESC-03: _handle_escalation writes EscalamientoTicket row to DB."""
+        from unittest.mock import patch, MagicMock, AsyncMock
+        from orchestrator.nivel2 import _handle_escalation
+
+        session = make_session(segmento=Segmento.pregrado, nombre="Carlos")
+        escalar_result = {
+            "ok": True,
+            "motivo": "frustracion",
+            "prioridad": "alta",
+            "asesor_asignado": "Julian Andrés Gil",
+            "ticket": "🔴 ESCALAMIENTO IA — Prioridad: ALTA\n...",
+        }
+
+        db_session_mock = MagicMock()
+        db_session_mock.__enter__ = MagicMock(return_value=db_session_mock)
+        db_session_mock.__exit__ = MagicMock(return_value=False)
+
+        with patch("orchestrator.nivel2.get_crm") as mock_crm, \
+             patch("orchestrator.nivel2.Session") as mock_session_cls, \
+             patch("orchestrator.nivel2.get_engine"), \
+             patch("orchestrator.nivel2._notify_internal_group", new_callable=AsyncMock):
+            mock_crm.return_value.create_task = AsyncMock(return_value="task-123")
+            mock_session_cls.return_value = db_session_mock
+
+            asyncio.get_event_loop().run_until_complete(
+                _handle_escalation(session, escalar_result)
+            )
+
+        db_session_mock.add.assert_called_once()
+        added = db_session_mock.add.call_args[0][0]
+        from orchestrator.db import EscalamientoTicket
+        assert isinstance(added, EscalamientoTicket)
+        assert added.motivo == "frustracion"
+        assert added.prioridad == "alta"
+        assert added.asesor_asignado == "Julian Andrés Gil"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
