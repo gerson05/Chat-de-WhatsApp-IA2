@@ -1,6 +1,6 @@
 # Sistema de Agente Conversacional IA para el Proceso Comercial de la Universidad Icesi
 
-**Versión:** 1.0  
+**Versión:** 1.1  
 **Fecha:** Junio 2026  
 **Equipo:** Área Comercial — Universidad Icesi  
 
@@ -53,23 +53,25 @@ Un agente conversacional que opera 24/7, responde con información verificada de
             │                          │                            │
 ┌───────────▼──────────┐  ┌───────────▼──────────┐  ┌────────────▼──────────┐
 │  GESTIÓN DE SESIÓN   │  │  CONVERSACIÓN (LLM)  │  │    BASE DE DATOS       │
-│  Redis (TTL 7 días)  │  │  Gemini via Gemini   │  │    PostgreSQL          │
-│  session_store.py    │  │  API (gratuita)       │  │    db.py               │
-│  - Historial         │  │  conversation.py      │  │    - conversation_logs │
-│  - Estado CIIPOC     │  │  - System prompt      │  │    - tickets_escal.    │
-│  - Datos del lead    │  │  - Tool dispatching   │  │    - intenciones_log   │
+│  Redis (TTL 7 días)  │  │  Gemini (gratuita)   │  │    PostgreSQL          │
+│  + InMemoryFallback  │  │  conversation.py      │  │    db.py               │
+│  session_store.py    │  │  - A/B system prompt  │  │    - conversation_logs │
+│  - Historial         │  │  - Sanitiz. mensajes  │  │    - tickets_escal.    │
+│  - Estado CIIPOC     │  │  - Tool dispatching   │  │    - archived_sessions │
+│  - Archiva en Postgres│  │  - Injection guard    │  │    - followup_jobs     │
 └──────────────────────┘  └───────────┬──────────┘  └────────────────────────┘
                                        │
             ┌──────────────────────────┼───────────────────────────┐
             │                          │                            │
 ┌───────────▼──────────┐  ┌───────────▼──────────┐  ┌────────────▼──────────┐
 │  BASE DE CONOCIMIENTO│  │    TOOLS / ACCIONES  │  │     NIVEL 2 (BIZ)      │
-│  RAG local (FAISS)   │  │    tools.py           │  │     nivel2.py          │
+│  RAG local (pickle)  │  │    tools.py           │  │     nivel2.py          │
 │  rag.py              │  │  - consultar_kb       │  │  - Sync CRM            │
-│  - Embeddings locales│  │  - validar_programa   │  │  - Persistir tickets   │
-│  - Búsqueda coseno   │  │  - registrar_intencion│  │  - Follow-up queue     │
-│  - icesi-kb/ (YAML)  │  │  - escalar_a_asesor   │  │  - Notif. WA interno   │
-└──────────────────────┘  │  - sugerir_paso       │  └────────────────────────┘
+│  - Gemini embeddings │  │  - validar_programa   │  │  - Persistir tickets   │
+│  - Fallback local    │  │  - registrar_intencion│  │  - Celery follow-ups   │
+│  - Vigencia checker  │  │  - escalar_a_asesor   │  │  - Notif. WA interno   │
+│  - icesi-kb/ (YAML)  │  │  - sugerir_paso       │  └────────────────────────┘
+└──────────────────────┘  │  - capturar_datos     │
                           └──────────────────────┘
 ```
 
@@ -131,12 +133,19 @@ Cada documento es un archivo Markdown con frontmatter YAML que incluye: `id`, `n
 
 El sistema usa recuperación de información local sin dependencia de servidores externos:
 
-1. Al iniciar, los documentos se indexan con embeddings de texto (compatibles con Gemini o locales via `sentence-transformers`).
-2. Ante una consulta, se calcula similitud coseno entre el embedding de la consulta y los chunks indexados.
-3. Se retornan los N chunks más relevantes, filtrados opcionalmente por segmento.
-4. El agente siempre consulta la KB antes de afirmar datos factuales (precios, fechas, requisitos).
+1. Al iniciar, los documentos se indexan con embeddings de texto (Gemini AI Studio free tier por defecto).
+2. Si Gemini no responde, el sistema hace fallback automático a `sentence-transformers` local.
+3. Ante una consulta, se calcula similitud coseno entre el embedding de la consulta y los chunks indexados.
+4. Se retornan los N chunks más relevantes, filtrados opcionalmente por segmento y vigencia.
+5. El agente siempre consulta la KB antes de afirmar datos factuales (precios, fechas, requisitos).
 
-### 5.3 Herramienta `consultar_base_conocimiento`
+### 5.3 Validación y vigencia
+
+- `python -m ingest.check_vigencia` — CLI que lee `manifest.yaml` y reporta documentos expirados (🔴) o próximos a vencer (🟡), con el nombre del aprobador responsable.
+- El script también se ejecuta automáticamente al arrancar la aplicación y emite advertencias en log.
+- El proceso de ingest termina con **exit code 1** si los embeddings fallan o el índice resultante no retorna resultados útiles (antes continuaba silenciosamente con vectores en cero).
+
+### 5.4 Herramienta `consultar_base_conocimiento`
 
 ```json
 {
@@ -198,13 +207,20 @@ Asesor ve ticket en Dashboard → toma el caso
 
 ### 6.4 Ticket de escalamiento
 
-Cada ticket incluye:
-- Prioridad (🔴 alta / 🟡 media / 🟢 baja)
-- Datos del aspirante: nombre, programa de interés, segmento, etapa CIIPOC
-- Necesidad identificada y barrera principal
-- Tono del aspirante (e.g., "frustrado con costos", "muy motivado")
-- Últimos 5 intercambios de la conversación
-- Acción recomendada
+Cada ticket incluye un **Briefing Ejecutivo** al inicio para lectura rápida del asesor:
+
+```
+🔴 ESCALAMIENTO IA — Prioridad: ALTA
+═════════════════════════════════════════════
+📋 BRIEFING EJECUTIVO
+  ⚠️  ATENCIÓN — aspirante frustrado
+  María → MBA (etapa: objeciones, segmento: posgrado)
+  Frustración: alto 🔴 | Turnos sin avance: 4
+  Barrera: Costo del programa
+─────────────────────────────────────────────
+```
+
+El nivel de frustración (`alto/medio/bajo`) se calcula automáticamente analizando los últimos 6 mensajes del aspirante con 12 palabras clave. Debajo del briefing se incluye el detalle completo: necesidad, barrera, tono reportado por el agente, últimos intercambios y acción recomendada.
 
 ---
 
@@ -283,30 +299,36 @@ Disponible en `http://localhost:8000/` durante desarrollo:
 
 ## 9. Modelo de Datos
 
-### 9.1 Sesión (Redis)
+### 9.1 Sesión (Redis + archivo Postgres)
 
-La sesión se almacena en Redis con TTL de 7 días e incluye:
+La sesión se almacena en Redis con TTL de 7 días. En cada guardado, se archiva también en PostgreSQL para audit trail (sobrevive a la expiración del TTL).
 
 | Campo | Descripción |
 |-------|-------------|
-| `id_usuario` | Hash HMAC del número de teléfono |
+| `id_usuario` | Hash HMAC del número de teléfono (secreto dedicado `PHONE_HASH_SECRET`) |
 | `etapa_ciipoc` | Etapa actual en el embudo |
 | `segmento` | pregrado / posgrado / educontinua / indefinido |
 | `programa_interes` | Programa identificado |
+| `nombre` | Nombre del aspirante (capturado por tool) |
+| `email` | Email de contacto (capturado y validado por tool) |
+| `telefono_contacto` | Teléfono adicional (capturado y validado por tool) |
 | `necesidad_identificada` | Necesidad del aspirante |
 | `barrera` | Barrera principal detectada |
 | `historial` | Turnos de conversación (ventana de 20 mensajes) |
 | `escalado` | Flag de si ya fue escalado |
+| `prompt_variant` | Variante A/B del system prompt (`v1` / `v2`) |
 | `estado_funnel_crm` | lead / inscrito / admitido / matriculado / etc. |
 
 ### 9.2 Tablas PostgreSQL
 
 | Tabla | Propósito |
 |-------|-----------|
-| `conversation_logs` | Historial completo de conversaciones para auditoría |
-| `tickets_escalamiento` | Tickets de escalamiento a asesores |
+| `conversation_logs` | Historial turn-by-turn de conversaciones para auditoría |
+| `tickets_escalamiento` | Tickets de escalamiento con seguimiento de asesores |
 | `intenciones_log` | Log de avances de etapa CIIPOC |
-| `kb_chunks` | Fragmentos de la base de conocimiento con embeddings vectoriales |
+| `kb_chunks` | Fragmentos de la KB con embeddings vectoriales |
+| `archived_sessions` | JSON completo de sesiones archivadas; `purge_after` configurable (Ley 1581) |
+| `followup_jobs` | Cola de follow-ups persistente; jobs sobreviven reinicios del servicio |
 
 ---
 
@@ -324,7 +346,9 @@ Operaciones disponibles:
 - `update_lead(id, fields)` — Actualizar etapa, segmento, programa, barrera
 - `create_task(task)` — Crear tarea de seguimiento para el asesor
 
-La variable de entorno `CRM_PROVIDER=hubspot` activa la integración real. Sin ella, usa el mock.
+La variable de entorno `CRM_BACKEND=hubspot` activa la integración real. Sin ella, usa el mock.
+
+**Resiliencia (HubSpot):** todas las llamadas pasan por un circuit breaker que abre tras 5 fallos consecutivos (se resetea en 60 s) y un mecanismo de retry con backoff exponencial (1 s / 2 s, máximo 3 intentos). Los errores se registran sin bloquear el pipeline conversacional.
 
 ---
 
@@ -363,12 +387,15 @@ El dashboard Streamlit (`dashboard/app.py`) provee:
 | `WHATSAPP_PHONE_ID` | ID del número de WhatsApp Business | Para WA |
 | `WHATSAPP_ACCESS_TOKEN` | Token de acceso Meta | Para WA |
 | `WHATSAPP_VERIFY_TOKEN` | Token de verificación del webhook | Para WA |
-| `WHATSAPP_APP_SECRET` | Secreto para firma HMAC | Para WA |
+| `WHATSAPP_APP_SECRET` | Secreto para firma HMAC — **obligatorio en producción** | Para WA |
 | `TELEGRAM_BOT_TOKEN` | Token del bot de Telegram | Para Telegram |
-| `CRM_PROVIDER` | `mock` (default) o `hubspot` | No |
+| `CRM_BACKEND` | `mock` (default) o `hubspot` | No |
 | `HUBSPOT_API_KEY` | API key de HubSpot | Si CRM=hubspot |
 | `CHAT_API_KEY` | Bearer token para endpoint `/chat` | Recomendado |
 | `APP_ENV` | `development` o `production` | No (default: development) |
+| `PHONE_HASH_SECRET` | Secreto dedicado para HMAC de teléfonos (Ley 1581) | Recomendado |
+| `DATA_RETENTION_DAYS` | Días de retención de sesiones archivadas (default: 90) | No |
+| `PROMPT_VARIANT_DEFAULT` | Variante A/B del system prompt: `v1` o `v2` (default: v1) | No |
 
 ### 12.2 Inicio rápido (desarrollo)
 
@@ -412,7 +439,7 @@ Servicios incluidos:
 
 ### 13.1 Suite de pruebas
 
-21 pruebas unitarias e integración en `tests/test_conversation.py`:
+24 pruebas unitarias e integración en `tests/test_conversation.py` — **24/24 passing**:
 
 | Módulo | Pruebas | Cobertura |
 |--------|---------|-----------|
@@ -436,39 +463,79 @@ make test-cov
 
 ---
 
-## 14. Seguridad
+## 14. Seguridad y Compliance
 
-- **Firma HMAC-SHA256**: cada mensaje de WhatsApp se verifica contra la firma enviada por Meta.
-- **Hash de teléfonos**: los números de teléfono se almacenan como hashes HMAC — nunca en texto plano.
+### Seguridad
+
+- **Firma HMAC-SHA256**: cada mensaje de WhatsApp se verifica contra la firma enviada por Meta. En entorno `production`, si `WHATSAPP_APP_SECRET` no está configurado el webhook rechaza todas las solicitudes con 401 (antes las aceptaba silenciosamente).
+- **Sanitización de mensajes**: los mensajes del usuario son truncados a 2000 caracteres y se neutralizan intentos de prompt injection mediante el patrón `[SISTEMA:]` antes de llegar al LLM.
+- **Hash de teléfonos**: los números se almacenan como hashes HMAC-SHA256 con `PHONE_HASH_SECRET` — un secreto dedicado separado del secreto de la aplicación.
 - **Rate limiting**: máximo de mensajes por usuario por día, configurable via `MAX_MESSAGES_PER_DAY`.
 - **Bearer token**: el endpoint `/chat` requiere autenticación con token cuando `CHAT_API_KEY` está configurado.
 - **CORS**: en producción, solo dominios `*.icesi.edu.co` están permitidos.
 - **Deduplicación**: buffer circular de 10,000 message IDs para evitar procesamiento doble.
 
+### Compliance (Ley 1581 / Habeas Data)
+
+- **Retención configurable**: sesiones archivadas en PostgreSQL con campo `purge_after` basado en `DATA_RETENTION_DAYS` (default 90 días). Función `purge_expired_sessions()` disponible para ejecución periódica via cron.
+- **Sin datos en texto plano**: teléfonos siempre hasheados; el sistema no almacena cédulas, direcciones ni datos bancarios (principio no negociable en el system prompt).
+- **Pendiente de revisión legal**: el flujo completo de datos debe ser revisado por el área jurídica de Icesi antes del despliegue en producción con datos reales.
+
 ---
 
-## 15. Limitaciones y Trabajo Futuro
+## 15. A/B Testing de Prompts
 
-### Limitaciones del MVP
+El sistema soporta experimentos controlados de system prompt sin afectar todas las sesiones:
 
-| Ítem | Estado |
-|------|--------|
-| Cola de follow-ups (Redis sorted set) | Pierde jobs al reiniciar |
-| Integración CRM HubSpot | No probada en producción |
-| Hash de teléfonos reversible | HMAC con secreto compartido |
-| Sin política de retención de datos | Pendiente evaluación Ley 1581 |
+- **`v1`** (default): tono consultivo estándar CIIPOC, mensajes de 2-6 líneas.
+- **`v2`**: tono más directo y conciso, mensajes de 1-4 líneas, orientado a acción rápida.
+
+La variante se asigna al crear la sesión desde `PROMPT_VARIANT_DEFAULT`. Para un experimento, se puede cambiar la variable a `v2` en un subconjunto de usuarios o por segmento. Las métricas de conversación en el dashboard permiten comparar el avance de etapa CIIPOC entre variantes.
+
+---
+
+## 16. Cola de Follow-ups
+
+Los recordatorios se programan según la etapa CIIPOC del aspirante:
+
+| Etapa | Delay |
+|-------|-------|
+| Indagación | 72 h |
+| Propuesta | 48 h |
+| Objeciones | 24 h |
+| Cierre | 24 h |
+
+Los jobs se escriben en **dos destinos simultáneos**:
+1. **Celery** (broker: Redis) — ejecución rápida con autoretry y backoff exponencial.
+2. **PostgreSQL** (`followup_jobs`) — persistencia duradera; si Redis reinicia, los jobs no se pierden.
+
+Arrancar el worker:
+```bash
+celery -A orchestrator.celery_worker worker --loglevel=info
+```
+
+---
+
+## 17. Limitaciones y Trabajo Futuro
+
+### Pendiente de implementación
+
+| Ítem | Prioridad |
+|------|-----------|
+| Panel de administración en dashboard (gestión de tickets, edición KB) | Media |
+| Revisión legal completa Ley 1581 por área jurídica | Alta |
+| Pruebas de integración CRM HubSpot en producción con datos reales | Alta |
+| Framework de evaluación automática (LLM-as-judge) | Baja |
 
 ### Próximas iteraciones sugeridas
 
-1. **Cola de follow-ups persistente** — migrar de Redis sorted set a Celery + PostgreSQL backend.
-2. **Tool de captura de datos** — `capturar_datos_aspirante` para nombre, email y teléfono estructurado.
-3. **A/B testing de prompts** — versionado del system prompt con override por sesión.
-4. **Framework de evaluación automática** — integración con LLM-as-judge para calidad de respuestas.
-5. **Webhook seguro en producción** — forzar validación de `WHATSAPP_APP_SECRET` en todos los entornos.
+1. **Panel admin en dashboard** — gestión de tickets, reasignación, edición de KB y disparo manual de follow-ups.
+2. **Evaluación automática de calidad** — integración con LLM-as-judge para medir precisión de respuestas semanalmente.
+3. **Revisión jurídica Ley 1581** — validar flujo completo de datos personales con el área legal de Icesi antes del go-live.
 
 ---
 
-## 16. Glosario
+## 18. Glosario
 
 | Término | Definición |
 |---------|-----------|
