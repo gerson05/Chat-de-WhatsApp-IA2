@@ -1,3 +1,4 @@
+import fnmatch
 import hashlib
 import hmac
 import json
@@ -52,7 +53,6 @@ class _InMemoryRedis:
         return [self._store.get(k) for k in keys]
 
     async def scan_iter(self, match="*", count=None):
-        import fnmatch
         for key in list(self._store.keys()):
             if fnmatch.fnmatch(key, match):
                 yield key
@@ -169,7 +169,7 @@ async def list_sessions(limit: int = 50) -> list[dict]:
         return []
 
     raws = await r.mget(*keys)
-    sessions = []
+    parsed = []
     for raw in raws:
         if not raw:
             continue
@@ -177,17 +177,29 @@ async def list_sessions(limit: int = 50) -> list[dict]:
             data = json.loads(raw)
         except Exception:
             continue
+        parsed.append(data)
+
+    if not parsed:
+        return []
+
+    display_keys = [f"display:{d.get('id_usuario', '')}" for d in parsed]
+    display_values = await r.mget(*display_keys)
+    display_map = {
+        d.get("id_usuario", ""): (v or d.get("id_usuario", "")[:8] + "…")
+        for d, v in zip(parsed, display_values)
+    }
+
+    sessions = []
+    for data in parsed:
         id_usuario = data.get("id_usuario", "")
-        display_phone = await r.get(f"display:{id_usuario}") or id_usuario[:8] + "…"
-        updated_at = data.get("updated_at") or data.get("created_at")
         sessions.append({
-            "phone": display_phone,
+            "phone": display_map.get(id_usuario, id_usuario[:8] + "…"),
             "session_id": id_usuario,
             "etapa_ciipoc": data.get("etapa_ciipoc", "contacto"),
             "segmento": data.get("segmento", "indefinido"),
             "escalado": data.get("escalado", False),
             "turn_count": len(data.get("historial", [])),
-            "last_active_ts": updated_at,
+            "last_active_ts": data.get("updated_at") or data.get("created_at"),
         })
 
     sessions.sort(key=lambda s: s["last_active_ts"] or "", reverse=True)

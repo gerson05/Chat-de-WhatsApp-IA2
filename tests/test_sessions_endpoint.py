@@ -50,3 +50,22 @@ async def test_register_phone_display_stores_value():
     r = await get_redis()
     stored = await r.get("display:hash01")
     assert stored == "+573009876543"
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_sorted_by_last_active():
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+
+    session_old = SessionState(id_usuario="old_session")
+    session_old.updated_at = now - timedelta(hours=2)
+    await save_session(session_old)
+
+    session_new = SessionState(id_usuario="new_session")
+    session_new.updated_at = now
+    await save_session(session_new)
+
+    result = await list_sessions()
+    assert len(result) == 2
+    assert result[0]["session_id"] == "new_session"
+    assert result[1]["session_id"] == "old_session"
