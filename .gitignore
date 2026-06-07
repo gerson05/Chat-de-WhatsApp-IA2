@@ -25,3 +25,4 @@ htmlcov/
 
 # Índice vectorial local (se regenera con `python -m ingest.ingest`)
 icesi-kb/.index/
+.venv/
