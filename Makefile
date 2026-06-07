@@ -3,7 +3,8 @@
 .PHONY: install dev infra ingest test dashboard lint clean
 
 install:
-	pip install -r requirements.txt
+	uv venv .venv --python 3.12
+	uv pip install -r requirements.txt --python .venv/bin/python
 
 # Start local infrastructure (Postgres + Redis)
 infra:
@@ -31,11 +32,11 @@ dashboard:
 
 # Run tests
 test:
-	pytest tests/ -v --tb=short
+	.venv/bin/pytest tests/ -v --tb=short
 
 # Run tests with coverage
 test-cov:
-	pytest tests/ -v --cov=orchestrator --cov-report=term-missing
+	.venv/bin/pytest tests/ -v --cov=orchestrator --cov-report=term-missing
 
 # Lint
 lint:
