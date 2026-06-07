@@ -48,6 +48,15 @@ class _InMemoryRedis:
     async def expire(self, key, ttl):
         return True
 
+    async def mget(self, *keys):
+        return [self._store.get(k) for k in keys]
+
+    async def scan_iter(self, match="*", count=None):
+        import fnmatch
+        for key in list(self._store.keys()):
+            if fnmatch.fnmatch(key, match):
+                yield key
+
 
 _redis = None
 
@@ -142,6 +151,47 @@ async def create_session(phone: str, crm_data: Optional[dict] = None) -> Session
 
     await save_session(session)
     return session
+
+
+async def register_phone_display(id_usuario: str, phone: str) -> None:
+    """Stores the plain phone number for display in the testing console.
+    Only called from the /chat endpoint (never from WhatsApp/Telegram)."""
+    r = await get_redis()
+    ttl = settings.session_ttl_days * 86400
+    await r.setex(f"display:{id_usuario}", ttl, phone)
+
+
+async def list_sessions(limit: int = 50) -> list[dict]:
+    """Returns up to `limit` active sessions, sorted by last update descending."""
+    r = await get_redis()
+    keys = [k async for k in r.scan_iter("session:*", count=200)]
+    if not keys:
+        return []
+
+    raws = await r.mget(*keys)
+    sessions = []
+    for raw in raws:
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except Exception:
+            continue
+        id_usuario = data.get("id_usuario", "")
+        display_phone = await r.get(f"display:{id_usuario}") or id_usuario[:8] + "…"
+        updated_at = data.get("updated_at") or data.get("created_at")
+        sessions.append({
+            "phone": display_phone,
+            "session_id": id_usuario,
+            "etapa_ciipoc": data.get("etapa_ciipoc", "contacto"),
+            "segmento": data.get("segmento", "indefinido"),
+            "escalado": data.get("escalado", False),
+            "turn_count": len(data.get("historial", [])),
+            "last_active_ts": updated_at,
+        })
+
+    sessions.sort(key=lambda s: s["last_active_ts"] or "", reverse=True)
+    return sessions[:limit]
 
 
 async def compress_history(session: SessionState, llm_client) -> SessionState:
