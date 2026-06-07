@@ -153,7 +153,8 @@ def format_kb_results(chunks: list[dict]) -> str:
 
 def build_index(chunks: list[dict]) -> int:
     """Embebe los chunks y persiste el índice local. `chunks` = lista de dicts con
-    al menos {contenido, documento_id, segmento, vigencia}."""
+    al menos {contenido, documento_id, segmento, vigencia}.
+    Raises ValueError si todos los embeddings son cero (fallo silencioso del proveedor)."""
     if not chunks:
         log.warning("[RAG] No hay chunks para indexar.")
         return 0
@@ -161,6 +162,18 @@ def build_index(chunks: list[dict]) -> int:
     textos = [c["contenido"] for c in chunks]
     vectores = embed_texts(textos, input_type="document")
     matrix = np.asarray(vectores, dtype=np.float32)
+
+    norms = np.linalg.norm(matrix, axis=1)
+    zero_count = int(np.sum(norms < 1e-6))
+    if zero_count > 0:
+        pct = zero_count / len(textos) * 100
+        msg = (
+            f"[RAG] {zero_count}/{len(textos)} chunks ({pct:.1f}%) tienen "
+            "embeddings cero — posible fallo silencioso del proveedor."
+        )
+        if zero_count == len(textos):
+            raise ValueError(msg + " Abortando: el índice quedaría completamente inútil.")
+        log.error(msg + " Los chunks afectados no serán recuperables.")
 
     path = settings.vector_index_path
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)

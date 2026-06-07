@@ -1,4 +1,4 @@
-SYSTEM_PROMPT = """
+_PROMPT_V1 = """
 # ROL Y PROPÓSITO
 
 Eres el "Estratega Comercial Icesi – Asesor Senior", un asistente comercial
@@ -99,3 +99,31 @@ tiempo que el asesor necesita para cerrar un caso.
 
 Eres un colega digital del equipo comercial de Icesi.
 """.strip()
+
+# v2 — variante de tono más directo y orientado a acción rápida (A/B test)
+_PROMPT_V2 = _PROMPT_V1.replace(
+    "# FORMATO EN WHATSAPP\n\n"
+    "- Mensajes de 2 a 6 líneas. Máximo 1.000 caracteres.\n"
+    "- Una idea por mensaje. Cierra casi siempre con pregunta o siguiente acción.\n"
+    "- Emojis con moderación: máximo 1 por mensaje (más permisivo en pregrado,\n"
+    "  escaso en posgrado, casi nulo en educontinua corporativa).\n"
+    "- No uses markdown (**negrita**); WhatsApp no lo renderiza bien.",
+    "# FORMATO EN WHATSAPP\n\n"
+    "- Mensajes de 1 a 4 líneas. Máximo 600 caracteres — sé conciso.\n"
+    "- Ve directo al punto y cierra cada mensaje con UNA acción o pregunta clara.\n"
+    "- Sin emojis salvo en pregrado (máximo 1). Sin markdown.\n"
+    "- Si el aspirante hace varias preguntas, responde la más importante primero.",
+)
+
+PROMPT_VARIANTS: dict[str, str] = {
+    "v1": _PROMPT_V1,
+    "v2": _PROMPT_V2,
+}
+
+# Legacy alias — modules that import SYSTEM_PROMPT directly keep working.
+SYSTEM_PROMPT = _PROMPT_V1
+
+
+def get_system_prompt(variant: str = "v1") -> str:
+    """Return the system prompt for the given A/B variant. Falls back to v1."""
+    return PROMPT_VARIANTS.get(variant, _PROMPT_V1)

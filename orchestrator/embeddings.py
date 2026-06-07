@@ -77,13 +77,21 @@ def _embed_local(texts: list[str], input_type: InputType) -> list[list[float]]:
 # ── API pública ──────────────────────────────────────────────────────────────────
 
 def embed_texts(texts: list[str], input_type: InputType = "document") -> list[list[float]]:
-    """Devuelve un vector por cada texto. Lanza excepción si el proveedor falla;
-    los llamadores (rag.query_kb / ingest) deben capturarla y degradar."""
+    """Devuelve un vector por cada texto.
+    Si el proveedor es 'gemini' y falla, intenta fallback local automáticamente.
+    Lanza excepción solo si ambos proveedores fallan."""
     if not texts:
         return []
     if settings.embedding_provider == "local":
         return _embed_local(texts, input_type)
-    return _embed_gemini(texts, input_type)
+    try:
+        return _embed_gemini(texts, input_type)
+    except Exception as exc:
+        log.warning(
+            f"[Embeddings] Gemini falló ({exc.__class__.__name__}: {exc}) — "
+            "usando fallback local (sentence-transformers)."
+        )
+        return _embed_local(texts, input_type)
 
 
 def embed_one(text: str, input_type: InputType = "query") -> list[float]:

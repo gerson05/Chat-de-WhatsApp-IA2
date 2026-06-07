@@ -11,13 +11,24 @@ from . import llm
 
 from .config import get_settings
 from .models import SessionState
-from .system_prompt import SYSTEM_PROMPT
+from .system_prompt import get_system_prompt
 from .tools import TOOL_SCHEMAS, dispatch_tool
 
 settings = get_settings()
 log = logging.getLogger(__name__)
 
 # Patterns that may signal hallucinated factual claims — used by the gate
+_MAX_USER_MESSAGE_LENGTH = 2000
+_SISTEMA_INJECTION = re.compile(r'\[SISTEMA[\s:]', re.IGNORECASE)
+
+
+def _sanitize_user_message(message: str) -> str:
+    """Truncate oversized messages and neutralize [SISTEMA:] injection attempts."""
+    message = message[:_MAX_USER_MESSAGE_LENGTH]
+    message = _SISTEMA_INJECTION.sub('[SYS_BLOCKED]', message)
+    return message
+
+
 _HALLUCINATION_PATTERNS = [
     r"\$[\d.,]+",                        # price figures
     r"\d+\s*%\s*(de\s+beca|descuento)",  # beca percentages
@@ -116,6 +127,8 @@ async def run_conversation_turn(
     """
     tool_calls_executed: list[dict] = []
 
+    user_message = _sanitize_user_message(user_message)
+
     # Pre-flight checks
     pre_escalate = _detect_pre_escalation(user_message)
     if pre_escalate:
@@ -153,7 +166,7 @@ async def run_conversation_turn(
             response = await client.messages.create(
                 model=settings.llm_model,
                 max_tokens=1024,
-                system=SYSTEM_PROMPT,
+                system=get_system_prompt(session.prompt_variant),
                 tools=TOOL_SCHEMAS,
                 messages=current_messages,
                 timeout=settings.model_timeout_seconds,
@@ -207,7 +220,7 @@ async def run_conversation_turn(
             closing = await client.messages.create(
                 model=settings.llm_model,
                 max_tokens=1024,
-                system=SYSTEM_PROMPT,
+                system=get_system_prompt(session.prompt_variant),
                 messages=current_messages,
                 timeout=settings.model_timeout_seconds,
             )

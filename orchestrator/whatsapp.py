@@ -19,7 +19,17 @@ WA_API_BASE = "https://graph.facebook.com/v20.0"
 def verify_signature(payload: bytes, x_hub_signature: str) -> bool:
     """Validate Meta webhook HMAC-SHA256 signature using the App Secret."""
     if not settings.whatsapp_app_secret:
-        return True  # dev mode: skip (set WHATSAPP_APP_SECRET in production)
+        if settings.app_env == "production":
+            log.error(
+                "[WA] WHATSAPP_APP_SECRET not set in production — "
+                "rejecting webhook. Set the env var to restore service."
+            )
+            return False
+        log.warning(
+            "[WA] WHATSAPP_APP_SECRET not set — skipping signature check "
+            "(dev mode only, never deploy without this secret)."
+        )
+        return True
 
     expected = "sha256=" + hmac.new(
         settings.whatsapp_app_secret.encode(),

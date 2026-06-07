@@ -113,11 +113,36 @@ def main():
     log.info(f"[Ingest] Proveedor de embeddings: {settings.embedding_provider}")
     chunks = collect_chunks(docs, args.path)
     if not chunks:
-        log.warning("[Ingest] No se generaron chunks.")
-        return
+        log.error("[Ingest] No se generaron chunks. Abortando.")
+        sys.exit(1)
 
-    total = build_index(chunks)
-    log.info(f"[Ingest] Listo. {total} chunks indexados → {settings.vector_index_path}")
+    try:
+        total = build_index(chunks)
+    except Exception as exc:
+        log.error(f"[Ingest] FALLO al construir el índice: {exc}")
+        sys.exit(1)
+
+    log.info(f"[Ingest] {total} chunks indexados → {settings.vector_index_path}")
+
+    log.info("[Ingest] Validando índice con consulta de prueba…")
+    try:
+        from orchestrator.rag import query_kb, reset_index_cache
+        reset_index_cache()
+        test_results = query_kb("programas académicos Icesi")
+        top_score = test_results[0].get("score", 0) if test_results else 0
+        if top_score < 0.01:
+            log.error(
+                f"[Ingest] FALLO de validación: score={top_score:.4f} — "
+                "el índice no retorna resultados útiles. Revisar embeddings."
+            )
+            sys.exit(1)
+        log.info(
+            f"[Ingest] Validación exitosa: {len(test_results)} resultado(s), "
+            f"score_top={top_score:.3f}. Índice listo."
+        )
+    except Exception as exc:
+        log.error(f"[Ingest] FALLO en consulta de validación: {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

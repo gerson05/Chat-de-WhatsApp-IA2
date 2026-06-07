@@ -3,6 +3,7 @@
 Each returns a dict that is serialized back to the model as a tool_result.
 """
 import json
+import re
 import yaml
 import os
 from datetime import datetime
@@ -127,6 +128,32 @@ TOOL_SCHEMAS = [
                 },
             },
             "required": ["motivo", "prioridad", "resumen"],
+        },
+    },
+    {
+        "name": "capturar_datos_aspirante",
+        "description": (
+            "Registra y valida datos de contacto del aspirante: nombre completo, "
+            "email y/o teléfono. Llama esta función cuando el aspirante proporcione "
+            "cualquiera de estos datos durante la conversación. Los datos se persisten "
+            "en la sesión y se sincronizan con el CRM en el momento."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nombre": {
+                    "type": "string",
+                    "description": "Nombre completo del aspirante.",
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Dirección de correo electrónico del aspirante.",
+                },
+                "telefono": {
+                    "type": "string",
+                    "description": "Número de teléfono de contacto (solo dígitos, sin espacios ni guiones).",
+                },
+            },
         },
     },
     {
@@ -343,6 +370,47 @@ def tool_escalar_a_asesor(
     }
 
 
+_FRUSTRATION_KW = [
+    "no me entiendes", "no sirves", "esto no sirve", "qué mal",
+    "horrible", "inútil", "no ayudas", "para qué sirves",
+    "mentira", "no es cierto", "nunca", "siempre mal", "pésimo",
+]
+
+_URGENCIA_LABEL = {
+    "crisis_emocional":     "🚨 URGENTE — posible crisis emocional",
+    "alta_intencion_cierre": "🎯 OPORTUNIDAD — alta intención de matrícula",
+    "b2b":                  "🏢 B2B — requiere propuesta empresarial",
+    "frustracion":          "⚠️  ATENCIÓN — aspirante frustrado",
+    "solicitud_explicita":  "👋 Solicitó asesor directamente",
+    "objecion_compleja":    "💡 Objeción compleja — requiere criterio humano",
+    "dato_no_documentado":  "🔍 Dato no documentado en KB",
+    "sin_avance":           "⏳ Sin avance — conversación estancada",
+    "programa_fuera_piloto": "📋 Programa fuera del piloto actual",
+}
+
+_MOTIVO_TEXTO = {
+    "solicitud_explicita":  "Solicitó hablar con asesor",
+    "dato_no_documentado":  "Preguntó dato no documentado",
+    "objecion_compleja":    "Objeción compleja",
+    "frustracion":          "Señales de frustración",
+    "sin_avance":           "Sin avance después de 10+ mensajes",
+    "alta_intencion_cierre": "Alta intención de matrícula",
+    "b2b":                  "Caso corporativo / B2B",
+    "crisis_emocional":     "Señal de crisis emocional",
+    "programa_fuera_piloto": "Programa fuera del piloto",
+}
+
+
+def _compute_frustration_level(session: SessionState) -> str:
+    recent = " ".join(t.text.lower() for t in session.historial[-6:] if t.role == "user")
+    hits = sum(1 for kw in _FRUSTRATION_KW if kw in recent)
+    if hits >= 2:
+        return "alto 🔴"
+    if hits == 1:
+        return "medio 🟡"
+    return "bajo 🟢"
+
+
 def _build_ticket(motivo, prioridad, resumen, asesor, session: SessionState) -> str:
     prioridad_emoji = {"alta": "🔴", "media": "🟡", "baja": "🟢"}.get(prioridad, "⚪")
     nombre = resumen.get("nombre_aspirante") or session.nombre or "Aspirante"
@@ -354,21 +422,19 @@ def _build_ticket(motivo, prioridad, resumen, asesor, session: SessionState) -> 
     tono = resumen.get("tono_aspirante") or "—"
     intercambios = resumen.get("ultimos_5_intercambios") or _last_turns(session, 5)
     siguiente = resumen.get("siguiente_accion_sugerida") or session.intencion_siguiente_accion or "—"
-
-    motivo_texto = {
-        "solicitud_explicita": "Solicitó hablar con asesor",
-        "dato_no_documentado": "Preguntó dato no documentado",
-        "objecion_compleja": "Objeción compleja",
-        "frustracion": "Señales de frustración",
-        "sin_avance": "Sin avance después de 10+ mensajes",
-        "alta_intencion_cierre": "Alta intención de matrícula",
-        "b2b": "Caso corporativo / B2B",
-        "crisis_emocional": "Señal de crisis emocional",
-        "programa_fuera_piloto": "Programa fuera del piloto",
-    }.get(motivo, motivo)
+    motivo_texto = _MOTIVO_TEXTO.get(motivo, motivo)
+    urgencia = _URGENCIA_LABEL.get(motivo, f"Motivo: {motivo_texto}")
+    frustracion = _compute_frustration_level(session)
+    turno_en_etapa = session.contador_mensajes_sin_avance
 
     return (
         f"{prioridad_emoji} ESCALAMIENTO IA — Prioridad: {prioridad.upper()}\n"
+        f"{'═' * 45}\n"
+        f"📋 BRIEFING EJECUTIVO\n"
+        f"  {urgencia}\n"
+        f"  {nombre} → {programa} (etapa: {etapa}, segmento: {seg})\n"
+        f"  Frustración: {frustracion} | Turnos sin avance: {turno_en_etapa}\n"
+        f"  Barrera: {barrera}\n"
         f"{'─' * 45}\n"
         f"Aspirante: {nombre} ({session.id_lead_crm or 'nuevo lead'})\n"
         f"Programa: {programa}\n"
@@ -391,6 +457,50 @@ def _last_turns(session: SessionState, n: int) -> str:
         f"[{'Aspirante' if t.role == 'user' else 'Agente'}] {t.text}"
         for t in turns
     )
+
+
+_EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+_PHONE_RE = re.compile(r'^\d{7,15}$')
+
+
+def tool_capturar_datos_aspirante(
+    session: SessionState,
+    nombre: Optional[str] = None,
+    email: Optional[str] = None,
+    telefono: Optional[str] = None,
+) -> dict:
+    updated = []
+    errors = []
+
+    if nombre:
+        session.nombre = nombre.strip()
+        updated.append("nombre")
+
+    if email:
+        email = email.strip().lower()
+        if _EMAIL_RE.match(email):
+            session.email = email
+            updated.append("email")
+        else:
+            errors.append(f"email inválido: '{email}'")
+
+    if telefono:
+        telefono_clean = re.sub(r'\D', '', telefono)
+        if _PHONE_RE.match(telefono_clean):
+            session.telefono_contacto = telefono_clean
+            updated.append("telefono")
+        else:
+            errors.append(f"teléfono inválido: '{telefono}'")
+
+    return {
+        "ok": len(updated) > 0,
+        "campos_guardados": updated,
+        "errores": errors,
+        "resumen": (
+            f"Datos guardados: {', '.join(updated)}."
+            if updated else "No se guardó ningún dato."
+        ),
+    }
 
 
 def tool_sugerir_siguiente_paso(etapa_actual: str) -> dict:
@@ -434,6 +544,13 @@ def dispatch_tool(
             prioridad=input_data["prioridad"],
             resumen=input_data.get("resumen", {}),
             session=session,
+        )
+    elif name == "capturar_datos_aspirante":
+        return tool_capturar_datos_aspirante(
+            session=session,
+            nombre=input_data.get("nombre"),
+            email=input_data.get("email"),
+            telefono=input_data.get("telefono"),
         )
     elif name == "sugerir_siguiente_paso":
         return tool_sugerir_siguiente_paso(etapa_actual=input_data["etapa_actual"])

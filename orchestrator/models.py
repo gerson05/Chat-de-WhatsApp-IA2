@@ -53,6 +53,8 @@ class SessionState(BaseModel):
     tel_encrypted: str = ""
     id_lead_crm: Optional[str] = None
     nombre: Optional[str] = None
+    email: Optional[str] = None
+    telefono_contacto: Optional[str] = None
     segmento: Segmento = Segmento.indefinido
     etapa_ciipoc: EtapaCIIPOC = EtapaCIIPOC.contacto
     programa_interes: Optional[str] = None
@@ -68,6 +70,7 @@ class SessionState(BaseModel):
     id_asesor_asignado: Optional[str] = None
     contador_mensajes_sin_avance: int = 0
     total_bot_messages: int = 0
+    prompt_variant: str = "v1"
     created_at: datetime = None
     updated_at: datetime = None
 
