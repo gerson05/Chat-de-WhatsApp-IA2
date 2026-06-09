@@ -1,0 +1,13 @@
+[theme]
+# Tema fijo en claro para que el dashboard no herede el modo oscuro del SO
+# (los widgets nativos —inputs, labels, info— quedaban ilegibles sobre las
+#  tarjetas blancas del CSS personalizado).
+base = "light"
+primaryColor = "#003087"
+backgroundColor = "#f0f4fa"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1f2937"
+font = "sans serif"
+
+[server]
+headless = true

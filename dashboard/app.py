@@ -416,15 +416,18 @@ with tab_metricas:
             {"since": since},
         )
         if not daily.empty and "dia" in daily.columns:
+            # Tratar el día como categoría evita que Plotly haga zoom a microsegundos
+            # cuando solo hay uno o pocos puntos.
+            daily["dia"] = daily["dia"].astype(str)
             fig = px.bar(daily, x="dia", y="sesiones", color_discrete_sequence=["#003087"])
             fig.update_layout(
                 height=270, margin=dict(t=4, b=4, l=0, r=0),
                 plot_bgcolor="white", paper_bgcolor="white",
                 font_family="Inter",
-                xaxis=dict(showgrid=False, title=""),
-                yaxis=dict(showgrid=True, gridcolor="#f0f4fa", title=""),
+                xaxis=dict(showgrid=False, title="", type="category"),
+                yaxis=dict(showgrid=True, gridcolor="#f0f4fa", title="", dtick=1),
             )
-            fig.update_traces(marker_line_width=0, marker_corner_radius=4)
+            fig.update_traces(marker_line_width=0, marker_cornerradius=4)
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Sin datos suficientes aún")
@@ -444,11 +447,24 @@ with tab_metricas:
             orden = ["contacto", "indagacion", "identificacion", "propuesta", "objeciones", "cierre"]
             stages["etapa_ciipoc"] = pd.Categorical(stages["etapa_ciipoc"], categories=orden, ordered=True)
             stages = stages.sort_values("etapa_ciipoc")
-            fig = px.funnel(stages, x="n", y="etapa_ciipoc", color_discrete_sequence=["#e63946"])
+            # Color por etapa (degradado azul→rojo siguiendo el avance del funnel)
+            etapa_colores = {
+                "contacto":       "#003087",
+                "indagacion":     "#0a4bb5",
+                "identificacion": "#2a9d8f",
+                "propuesta":      "#f4a261",
+                "objeciones":     "#e76f51",
+                "cierre":         "#e63946",
+            }
+            fig = px.funnel(
+                stages, x="n", y="etapa_ciipoc",
+                color="etapa_ciipoc", color_discrete_map=etapa_colores,
+            )
             fig.update_layout(
                 height=270, margin=dict(t=4, b=4, l=0, r=0),
                 plot_bgcolor="white", paper_bgcolor="white",
-                font_family="Inter",
+                font_family="Inter", showlegend=False,
+                yaxis=dict(title=""),
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
@@ -551,16 +567,90 @@ with tab_metricas:
 # TAB 2 — CONSOLA DE CHATS (iframe al orquestador FastAPI)
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_chats:
-    st.markdown(f"""
-    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
-                padding:10px 16px;font-size:13px;color:#1e40af;margin-bottom:14px;
-                display:flex;align-items:center;gap:8px;">
-        {_icon(ICONS['message'], color='#1e40af', size=14)}
-        <span>Consola interactiva conectada a <strong>{ORCHESTRATOR_URL}</strong>
-        &nbsp;&mdash;&nbsp;requiere que el orquestador esté en ejecución.</span>
-    </div>
-    """, unsafe_allow_html=True)
-    components.iframe(src=f"{ORCHESTRATOR_URL}/", height=680, scrolling=False)
+    sub_historial, sub_live = st.tabs(["Conversaciones del bot", "Consola interactiva"])
+
+    # ── Sub-pestaña: transcripciones reales registradas (Telegram / WhatsApp / web) ──
+    with sub_historial:
+        st.markdown(
+            section_title("Conversaciones registradas — todos los canales", "message"),
+            unsafe_allow_html=True,
+        )
+
+        col_sel, col_rf = st.columns([4, 1])
+        with col_rf:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("Actualizar", key="refresh_chats"):
+                st.rerun()
+
+        sesiones = run_query(
+            """SELECT session_id,
+                      MAX(timestamp)            AS ultima,
+                      COUNT(*)                  AS turnos,
+                      MAX(segmento)             AS segmento,
+                      MAX(etapa_ciipoc)         AS etapa,
+                      BOOL_OR(escalado)         AS escalado
+               FROM conversation_logs
+               WHERE timestamp >= :since
+               GROUP BY session_id
+               ORDER BY ultima DESC
+               LIMIT 50""",
+            {"since": since},
+        )
+
+        if sesiones.empty or "session_id" not in sesiones.columns:
+            st.info("Aún no hay conversaciones registradas en este periodo. "
+                    "Chatea con el bot y pulsa «Actualizar».")
+        else:
+            def _fmt(row) -> str:
+                ts = str(row["ultima"])[:16].replace("T", " ")
+                seg = row["segmento"] or "sin segmento"
+                etapa = row["etapa"] or "—"
+                flag = " 🔴 escalado" if row.get("escalado") else ""
+                return f"{ts} · {row['turnos']} turnos · {seg} · {etapa}{flag} · {row['session_id'][:8]}"
+
+            opciones = {_fmt(r): r["session_id"] for _, r in sesiones.iterrows()}
+            with col_sel:
+                etiqueta = st.selectbox("Selecciona una conversación", list(opciones.keys()))
+            session_id = opciones[etiqueta]
+
+            mensajes = run_query(
+                """SELECT role, text, etapa_ciipoc, segmento, timestamp
+                   FROM conversation_logs
+                   WHERE session_id = :sid
+                   ORDER BY turn_id ASC, timestamp ASC""",
+                {"sid": session_id},
+            )
+
+            st.markdown("<div style='margin-top:6px'></div>", unsafe_allow_html=True)
+            if mensajes.empty or "role" not in mensajes.columns:
+                st.info("No se pudo cargar el detalle de esta conversación.")
+            else:
+                for _, m in mensajes.iterrows():
+                    rol = "user" if m["role"] == "user" else "assistant"
+                    avatar = "🧑" if rol == "user" else "🎓"
+                    with st.chat_message(rol, avatar=avatar):
+                        st.markdown(m["text"] or "_(sin texto)_")
+                        meta = []
+                        if m.get("etapa_ciipoc"):
+                            meta.append(f"etapa: {m['etapa_ciipoc']}")
+                        hora = str(m["timestamp"])[11:16] if m.get("timestamp") is not None else ""
+                        if hora:
+                            meta.append(hora)
+                        if meta:
+                            st.caption(" · ".join(meta))
+
+    # ── Sub-pestaña: consola interactiva en vivo (iframe al orquestador) ──
+    with sub_live:
+        st.markdown(f"""
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;
+                    padding:10px 16px;font-size:13px;color:#1e40af;margin-bottom:14px;
+                    display:flex;align-items:center;gap:8px;">
+            {_icon(ICONS['message'], color='#1e40af', size=14)}
+            <span>Consola interactiva conectada a <strong>{ORCHESTRATOR_URL}</strong>
+            &nbsp;&mdash;&nbsp;requiere que el orquestador esté en ejecución.</span>
+        </div>
+        """, unsafe_allow_html=True)
+        components.iframe(src=f"{ORCHESTRATOR_URL}/", height=680, scrolling=False)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -705,7 +795,7 @@ with tab_calidad:
                 plot_bgcolor="white", paper_bgcolor="white",
                 font_family="Inter", showlegend=False,
             )
-            fig_eval.update_traces(marker_line_width=0, marker_corner_radius=4)
+            fig_eval.update_traces(marker_line_width=0, marker_cornerradius=4)
             st.plotly_chart(fig_eval, use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
