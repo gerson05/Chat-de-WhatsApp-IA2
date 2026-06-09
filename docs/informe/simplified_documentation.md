@@ -4,7 +4,7 @@ Este proyecto es un **Agente Comercial de IA** (MVP) para la Universidad Icesi, 
 
 # Video Demostrativo del chatbot 
 
-https://www.youtube.com/watch?v=Jj4bhxjY6Ig
+https://youtu.be/0vCiAvxr5IQ
 
 
 ## Arquitectura General
